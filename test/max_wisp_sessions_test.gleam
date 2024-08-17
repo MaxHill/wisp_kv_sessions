@@ -1,4 +1,6 @@
 import birl
+import gleam/bit_array
+import gleam/crypto
 import gleam/dict
 import gleam/dynamic
 import gleam/http/response
@@ -111,19 +113,32 @@ pub fn it_can_inject_a_cookie_in_a_request_test() {
 }
 
 pub fn it_should_create_a_session_cokie_if_none_exist_test() {
-  let req = testing.get("/", [])
+  testing.get("/", [])
+  |> sessions.middleware(fn(req) {
+    wisp.get_cookie(req, "SESSION_COOKIE", wisp.Signed)
+    |> should.be_ok
 
-  let res =
-    req
-    |> sessions.middleware(fn(req2) {
-      wisp.get_cookie(req2, "SESSION_COOKIE", wisp.Signed)
-      |> should.be_ok
-
-      wisp.ok()
-    })
-
-  res
+    wisp.ok()
+  })
   |> response.get_cookies
   |> list.key_find("SESSION_COOKIE")
   |> should.be_ok
+}
+
+pub fn middleware_should_not_set_cookie_if_its_set_in_handler_test() {
+  let req = testing.get("/", [])
+
+  let unsign = fn(value) {
+    wisp.verify_signed_message(req, value) |> result.try(bit_array.to_string)
+  }
+
+  req
+  |> sessions.middleware(fn(req) {
+    wisp.ok()
+    |> sessions.set_session_cookie(req, "some_id", 60 * 60)
+  })
+  |> response.get_cookies
+  |> list.key_find("SESSION_COOKIE")
+  |> should.be_ok
+  |> unsign
 }

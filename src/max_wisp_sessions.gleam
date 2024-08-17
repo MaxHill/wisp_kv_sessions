@@ -1,11 +1,13 @@
 import birl
+import gleam/bit_array
+import gleam/crypto
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Decoder}
-import gleam/http
-import gleam/http/cookie
 import gleam/http/request
+import gleam/http/response
 import gleam/io
 import gleam/json.{type Json}
+import gleam/list
 import gleam/option.{type Option}
 import gleam/result
 import wisp
@@ -73,6 +75,10 @@ pub fn set(
 }
 
 /// Remove session
+/// Usage: 
+/// ```gleam
+/// sessions.delete(store, req)
+/// ```
 pub fn delete(store: SessionStore, req: wisp.Request) {
   use session_id <- result.try(get_session_id(req))
   store.delete(session_id)
@@ -80,7 +86,12 @@ pub fn delete(store: SessionStore, req: wisp.Request) {
 
 // Middleware
 
-/// Create a session if no session exists
+/// Create a session if no session exists to make sure there 
+/// always is a session_id to store data towards
+/// Usage: 
+/// ```gleam
+/// use <- sessions.middleware(req)
+/// ```
 pub fn middleware(
   req: wisp.Request,
   handle_request: fn(wisp.Request) -> wisp.Response,
@@ -89,9 +100,23 @@ pub fn middleware(
     Ok(_) -> handle_request(req)
     Error(_) -> {
       let session_id = "Generate_me"
-      inject_session_cookie(req, session_id, wisp.Signed)
-      |> handle_request
-      |> set_session_cookie(req, session_id, 60 * 60)
+      let res =
+        inject_session_cookie(req, session_id, wisp.Signed)
+        |> handle_request
+
+      // Only set the cookie if it has not already been set in the handler
+      res
+      |> response.get_cookies
+      |> list.key_find(cookie_name)
+      |> fn(cookie) {
+        case cookie {
+          Ok(_) -> res
+          Error(_) -> {
+            io.print("Should get here")
+            set_session_cookie(res, req, session_id, 60 * 60)
+          }
+        }
+      }
     }
   }
 }
@@ -117,7 +142,7 @@ pub fn inject_session_cookie(
   |> request.set_cookie(cookie_name, value)
 }
 
-fn set_session_cookie(
+pub fn set_session_cookie(
   response: wisp.Response,
   req: wisp.Request,
   session_id: SessionId,
@@ -131,17 +156,4 @@ fn set_session_cookie(
     wisp.Signed,
     expires_in,
   )
-}
-
-// Utils
-import gleam/bit_array
-import gleam/crypto
-import gleam/string
-
-/// Generate a random string of the given length.
-///
-fn random_string(length: Int) -> String {
-  crypto.strong_random_bytes(length)
-  |> bit_array.base64_url_encode(False)
-  |> string.slice(0, length)
 }
