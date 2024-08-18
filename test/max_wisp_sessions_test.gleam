@@ -1,15 +1,12 @@
-import birl
 import gleam/bit_array
-import gleam/crypto
-import gleam/dict
 import gleam/dynamic
 import gleam/http/response
-import gleam/io
 import gleam/json
 import gleam/list
 import gleam/result
 import gleeunit
 import gleeunit/should
+import internal/session_id
 import max_wisp_sessions as sessions
 import memory_store
 import wisp
@@ -17,12 +14,6 @@ import wisp/testing
 
 pub fn main() {
   gleeunit.main()
-}
-
-// gleeunit test functions end in `_test`
-pub fn hello_world_test() {
-  1
-  |> should.equal(1)
 }
 
 pub type TestObj {
@@ -127,18 +118,19 @@ pub fn it_should_create_a_session_cokie_if_none_exist_test() {
 
 pub fn middleware_should_not_set_cookie_if_its_set_in_handler_test() {
   let req = testing.get("/", [])
-
-  let unsign = fn(value) {
-    wisp.verify_signed_message(req, value) |> result.try(bit_array.to_string)
-  }
+  let session_id = session_id.generate()
 
   req
   |> sessions.middleware(fn(req) {
     wisp.ok()
-    |> sessions.set_session_cookie(req, "some_id", 60 * 60)
+    |> sessions.set_session_cookie(req, session_id, 60 * 60)
   })
   |> response.get_cookies
   |> list.key_find("SESSION_COOKIE")
   |> should.be_ok
-  |> unsign
+  |> fn(value) {
+    wisp.verify_signed_message(req, value) |> result.try(bit_array.to_string)
+  }
+  |> should.be_ok
+  |> should.equal(session_id.to_string(session_id))
 }

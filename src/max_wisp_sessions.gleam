@@ -1,4 +1,5 @@
 import birl
+import birl/duration
 import gleam/bit_array
 import gleam/crypto
 import gleam/dict.{type Dict}
@@ -10,18 +11,59 @@ import gleam/json.{type Json}
 import gleam/list
 import gleam/option.{type Option}
 import gleam/result
+import internal/session_id
 import wisp
 
 const cookie_name = "SESSION_COOKIE"
 
-pub type SessionId =
-  String
-
 pub type Key =
   String
 
-pub type Session {
-  Session(id: SessionId, expiry: birl.Time, data: Dict(String, Json))
+pub type SessionId =
+  session_id.SessionId
+
+// Expiry
+pub type Expiry {
+  ExpireAt(birl.Time)
+  ExpireIn(Int)
+}
+
+fn expiry_to_date(expiry: Expiry) {
+  case expiry {
+    ExpireAt(time) -> time
+    ExpireIn(seconds) -> {
+      birl.now()
+      |> birl.add(duration.seconds(seconds))
+    }
+  }
+}
+
+pub opaque type Session {
+  Session(
+    id: session_id.SessionId,
+    expires_at: birl.Time,
+    data: Dict(String, Json),
+  )
+}
+
+pub fn session_new_from_id(id: session_id.SessionId, expiry: Expiry) {
+  Session(id: id, expires_at: expiry_to_date(expiry), data: dict.new())
+}
+
+pub fn session_new(expiry: Expiry) {
+  Session(
+    id: session_id.generate(),
+    expires_at: expiry_to_date(expiry),
+    data: dict.new(),
+  )
+}
+
+pub fn session_set_key_value(session, key, data) {
+  Session(..session, data: dict.insert(session.data, key, data))
+}
+
+pub fn session_get(session: Session, key: Key) {
+  dict.get(session.data, key)
 }
 
 pub type SessionError {
@@ -31,12 +73,16 @@ pub type SessionError {
   NoSessionCookieError
 }
 
+/// Session store is the datalayer implementation used
+/// when calling session methods
+///
 pub type SessionStore {
   SessionStore(
-    get_session: fn(SessionId) -> Session,
-    get: fn(SessionId, Key) -> Option(Json),
-    set: fn(SessionId, Key, Json) -> Result(Nil, SessionError),
-    delete: fn(SessionId) -> Result(Nil, SessionError),
+    default_expiry: Int,
+    get_session: fn(session_id.SessionId) -> Session,
+    get: fn(session_id.SessionId, Key) -> option.Option(json.Json),
+    set: fn(session_id.SessionId, Key, json.Json) -> Result(Nil, SessionError),
+    delete: fn(session_id.SessionId) -> Result(Nil, SessionError),
   )
 }
 
@@ -113,7 +159,12 @@ pub fn middleware(
           Ok(_) -> res
           Error(_) -> {
             io.print("Should get here")
-            set_session_cookie(res, req, session_id, 60 * 60)
+            set_session_cookie(
+              res,
+              req,
+              session_id.SessionId(session_id),
+              60 * 60,
+            )
           }
         }
       }
@@ -125,6 +176,7 @@ pub fn middleware(
 fn get_session_id(req: wisp.Request) {
   wisp.get_cookie(req, cookie_name, wisp.Signed)
   |> result.replace_error(NoSessionCookieError)
+  |> result.map(session_id.SessionId)
 }
 
 /// Inject a cookie into a request
@@ -145,14 +197,14 @@ pub fn inject_session_cookie(
 pub fn set_session_cookie(
   response: wisp.Response,
   req: wisp.Request,
-  session_id: SessionId,
+  session_id: session_id.SessionId,
   expires_in: Int,
 ) {
   wisp.set_cookie(
     response,
     req,
     cookie_name,
-    session_id,
+    session_id.to_string(session_id),
     wisp.Signed,
     expires_in,
   )

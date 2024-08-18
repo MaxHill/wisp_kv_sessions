@@ -1,4 +1,3 @@
-import birl
 import gleam/dict
 import gleam/erlang/process
 import gleam/json.{type Json}
@@ -10,18 +9,13 @@ import memory_store/internal/memory_actor
 
 const timeout = 3000
 
-// Memory SessionStore Example
-type MemorySessionStoreConfig {
-  MemorySessionStoreConfig(db: dict.Dict(String, dict.Dict(String, Json)))
-}
-
 pub fn try_create_session_store() {
-  let _config = MemorySessionStoreConfig(db: dict.new())
   use db <- result.map(
     actor.start(dict.new(), memory_actor.handle_message)
     |> result.replace_error(sessions.DbSetupError),
   )
   sessions.SessionStore(
+    default_expiry: 60 * 60,
     get_session: get_session(db),
     get: get(db),
     set: set(db),
@@ -36,10 +30,9 @@ fn get_session(db: process.Subject(memory_actor.Message(a))) {
       fn(client) { memory_actor.GetSession(client, session_id) },
       timeout,
     )
-    |> result.unwrap(sessions.Session(
-      id: session_id,
-      expiry: birl.now(),
-      data: dict.new(),
+    |> result.unwrap(sessions.session_new_from_id(
+      session_id,
+      sessions.ExpireIn(60 * 60),
     ))
   }
 }

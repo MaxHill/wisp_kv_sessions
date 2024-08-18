@@ -1,4 +1,3 @@
-import birl
 import gleam/dict
 import gleam/erlang/process.{type Subject}
 import gleam/json.{type Json}
@@ -22,7 +21,7 @@ pub type Message(element) {
 }
 
 type Db =
-  dict.Dict(String, sessions.Session)
+  dict.Dict(sessions.SessionId, sessions.Session)
 
 pub fn handle_message(message: Message(e), db: Db) -> actor.Next(Message(e), Db) {
   case message {
@@ -33,17 +32,11 @@ pub fn handle_message(message: Message(e), db: Db) -> actor.Next(Message(e), Db)
     Set(session_id, key, data) -> {
       let new_session =
         dict.get(db, session_id)
-        |> result.unwrap(sessions.Session(
-          id: session_id,
-          expiry: birl.now(),
-          data: dict.new(),
+        |> result.unwrap(sessions.session_new_from_id(
+          session_id,
+          sessions.ExpireIn(60 * 60),
         ))
-        |> fn(session) {
-          sessions.Session(
-            ..session,
-            data: dict.insert(session.data, key, data),
-          )
-        }
+        |> fn(session) { sessions.session_set_key_value(session, key, data) }
 
       actor.continue(dict.insert(db, session_id, new_session))
     }
@@ -55,7 +48,7 @@ pub fn handle_message(message: Message(e), db: Db) -> actor.Next(Message(e), Db)
     GetField(client, session_id, key) -> {
       let field =
         dict.get(db, session_id)
-        |> result.try(fn(session) { dict.get(session.data, key) })
+        |> result.try(fn(session) { sessions.session_get(session, key) })
 
       process.send(client, field)
       actor.continue(db)
