@@ -17,10 +17,21 @@ pub fn try_create_session_store() {
   sessions.SessionStore(
     default_expiry: 60 * 60,
     get_session: get_session(db),
+    create_session: create_session(db),
     get: get(db),
     set: set(db),
     delete: delete(db),
   )
+}
+
+fn create_session(db: process.Subject(memory_actor.Message(a))) {
+  fn(session: sessions.Session) {
+    Ok(process.call(
+      db,
+      fn(client) { memory_actor.CreateSession(client, session) },
+      timeout,
+    ))
+  }
 }
 
 fn get_session(db: process.Subject(memory_actor.Message(a))) {
@@ -30,10 +41,7 @@ fn get_session(db: process.Subject(memory_actor.Message(a))) {
       fn(client) { memory_actor.GetSession(client, session_id) },
       timeout,
     )
-    |> result.unwrap(sessions.session_new_from_id(
-      session_id,
-      sessions.ExpireIn(60 * 60),
-    ))
+    |> option.from_result
   }
 }
 
@@ -50,7 +58,7 @@ fn get(db: process.Subject(memory_actor.Message(a))) {
 
 fn set(db: process.Subject(memory_actor.Message(a))) {
   fn(session_id: sessions.SessionId, key: sessions.Key, data: Json) {
-    process.send(db, memory_actor.Set(session_id, key, data))
+    process.send(db, memory_actor.SetField(session_id, key, data))
     Ok(Nil)
   }
 }
