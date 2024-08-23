@@ -12,6 +12,7 @@ import gleeunit/should
 import internal/session_id
 import max_wisp_sessions as sessions
 import memory_store
+import session_builder
 import wisp
 import wisp/testing
 
@@ -39,7 +40,7 @@ pub fn set_a_value_in_the_session_test() {
     test_session_config(),
   )
   use _ <- result.map(
-    memory_store.save_session(sessions.Session(
+    memory_store.save_session(session_builder.Session(
       id: session_id.SessionId("TEST_SESSION_ID"),
       expires_at: expires_at,
       data: dict.new(),
@@ -60,7 +61,7 @@ pub fn get_a_value_from_the_session_test() {
     test_session_config(),
   )
   use _ <- result.map(
-    memory_store.save_session(sessions.Session(
+    memory_store.save_session(session_builder.Session(
       id: session_id.SessionId("TEST_SESSION_ID"),
       expires_at: expires_at,
       data: dict.new(),
@@ -86,7 +87,7 @@ pub fn delete_a_key_from_session_test() {
   )
   let session_id = session_id.SessionId("TEST_SESSION_ID")
   use _ <- result.map(
-    memory_store.save_session(sessions.Session(
+    memory_store.save_session(session_builder.Session(
       id: session_id,
       expires_at: expires_at,
       data: dict.from_list([#("test_key", test_obj_to_json(TestObj("test")))]),
@@ -102,7 +103,7 @@ pub fn delete_a_key_from_session_test() {
   session_config.store.get_session(session_id)
   |> should.be_ok
   |> should.be_some
-  |> fn(session: sessions.Session) { dict.get(session.data, "test_key") }
+  |> fn(session: session_builder.Session) { dict.get(session.data, "test_key") }
   |> should.be_error
 }
 
@@ -111,7 +112,7 @@ pub fn delete_a_session_test() {
     test_session_config(),
   )
   use _ <- result.map(
-    memory_store.save_session(sessions.Session(
+    memory_store.save_session(session_builder.Session(
       id: session_id.SessionId("TEST_SESSION_ID"),
       expires_at: expires_at,
       data: dict.from_list([#("test_key", test_obj_to_json(TestObj("test")))]),
@@ -134,7 +135,7 @@ pub fn creating_a_session_test() {
   let expires_at = birl.now() |> birl.add(duration.days(3))
   let session_config =
     sessions.SessionConfig(
-      default_expiry: sessions.ExpireAt(expires_at),
+      default_expiry: session_builder.ExpireAt(expires_at),
       cookie_name: "SESSION_COOKIE",
       store: memory_store,
     )
@@ -146,7 +147,7 @@ pub fn creating_a_session_test() {
 
   session
   |> should.be_ok
-  |> sessions.session_expires_at
+  |> session_builder.session_expires_at
   |> should.equal(expires_at)
 }
 
@@ -156,7 +157,7 @@ pub fn replace_session_test() {
   )
   let old_sesssion_id = session_id.SessionId("TEST_SESSION_ID")
   use _ <- result.map(
-    memory_store.save_session(sessions.Session(
+    memory_store.save_session(session_builder.Session(
       id: old_sesssion_id,
       expires_at: expires_at,
       data: dict.from_list([#("test_key", test_obj_to_json(TestObj("test")))]),
@@ -166,7 +167,7 @@ pub fn replace_session_test() {
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
 
-  let new_session = sessions.session_new(sessions.ExpireIn(100_000))
+  let new_session = session_builder.builder() |> session_builder.build
 
   sessions.replace_session(session_config, wisp.ok(), req, new_session)
   |> should.be_ok
@@ -233,7 +234,9 @@ pub fn middleware_dont_set_cookie_if_its_set_in_handler_test() {
         session_config,
         _,
         req,
-        sessions.session_new_with_id(session_id, sessions.ExpireIn(1_000_000)),
+        session_builder.builder()
+          |> session_builder.with_id(session_id)
+          |> session_builder.build(),
       )
     },
   )
@@ -274,7 +277,7 @@ fn test_session_config() {
   use memory_store <- result.map(memory_store.try_create_session_store())
   let session_config =
     sessions.SessionConfig(
-      default_expiry: sessions.ExpireAt(expiration),
+      default_expiry: session_builder.ExpireAt(expiration),
       cookie_name: "SESSION_COOKIE",
       store: memory_store,
     )

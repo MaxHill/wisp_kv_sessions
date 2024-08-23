@@ -11,58 +11,14 @@ import gleam/list
 import gleam/option
 import gleam/result
 import internal/session_id
+import session_builder
 import wisp
-
-// Expiry
-pub type Expiry {
-  ExpireAt(birl.Time)
-  ExpireIn(Int)
-}
-
-// Session type
-type Key =
-  String
-
-pub type SessionId =
-  session_id.SessionId
-
-pub type Session {
-  Session(
-    id: session_id.SessionId,
-    expires_at: birl.Time,
-    data: dict.Dict(Key, json.Json),
-  )
-}
-
-pub fn session_new_with_id(id: session_id.SessionId, expiry: Expiry) {
-  Session(id: id, expires_at: expiry_to_date(expiry), data: dict.new())
-}
-
-pub fn session_new(expiry: Expiry) {
-  Session(
-    id: session_id.generate(),
-    expires_at: expiry_to_date(expiry),
-    data: dict.new(),
-  )
-}
-
-pub fn session_set_key_value(session, key, data) {
-  Session(..session, data: dict.insert(session.data, key, data))
-}
-
-pub fn session_get(session: Session, key: Key) {
-  dict.get(session.data, key)
-}
-
-pub fn session_expires_at(session: Session) {
-  session.expires_at
-}
 
 // Config
 //---------------------
 pub type SessionConfig {
   SessionConfig(
-    default_expiry: Expiry,
+    default_expiry: session_builder.Expiry,
     cookie_name: String,
     store: SessionStore,
   )
@@ -75,9 +31,10 @@ pub type SessionStore {
   SessionStore(
     default_expiry: Int,
     get_session: fn(session_id.SessionId) ->
-      Result(option.Option(Session), SessionError),
-    save_session: fn(Session) -> Result(Session, SessionError),
-    delete_session: fn(SessionId) -> Result(Nil, SessionError),
+      Result(option.Option(session_builder.Session), SessionError),
+    save_session: fn(session_builder.Session) ->
+      Result(session_builder.Session, SessionError),
+    delete_session: fn(session_builder.SessionId) -> Result(Nil, SessionError),
   )
 }
 
@@ -100,10 +57,11 @@ pub fn get_session(config: SessionConfig, req: wisp.Request) {
   case maybe_session {
     option.Some(session) -> Ok(session)
     option.None ->
-      config.store.save_session(session_new_with_id(
-        session_id,
-        config.default_expiry,
-      ))
+      session_builder.builder()
+      |> session_builder.with_id(session_id)
+      |> session_builder.with_expiry(config.default_expiry)
+      |> session_builder.build
+      |> config.store.save_session
   }
 }
 
@@ -122,11 +80,11 @@ pub fn delete_session(config: SessionConfig, req: wisp.Request) {
 pub fn get(
   config: SessionConfig,
   req: wisp.Request,
-  key: Key,
+  key: session_builder.Key,
   decoder: Decoder(data),
 ) {
   use session <- result.try(get_session(config, req))
-  case session_get(session, key) |> option.from_result {
+  case session_builder.session_get(session, key) |> option.from_result {
     option.None -> Ok(option.None)
     option.Some(data) -> {
       json.decode(from: json.to_string(data), using: decoder)
@@ -141,23 +99,30 @@ pub fn get(
 pub fn set(
   config: SessionConfig,
   req: wisp.Request,
-  key: Key,
+  key: session_builder.Key,
   data: data,
   encoder: fn(data) -> json.Json,
 ) {
   use session <- result.try(get_session(config, req))
   let json_data = encoder(data)
-  let new_session = session_set_key_value(session, key, json_data)
+  let new_session =
+    session_builder.builder_from(session)
+    |> session_builder.set_key_value(key, json_data)
+    |> session_builder.build
   use _ <- result.map(config.store.save_session(new_session))
   data
 }
 
 /// Delete key from session
 ///
-pub fn delete(config: SessionConfig, req: wisp.Request, key: Key) {
+pub fn delete(
+  config: SessionConfig,
+  req: wisp.Request,
+  key: session_builder.Key,
+) {
   use session <- result.try(get_session(config, req))
   config.store.save_session(
-    Session(..session, data: dict.delete(session.data, key)),
+    session_builder.Session(..session, data: dict.delete(session.data, key)),
   )
 }
 
@@ -171,7 +136,7 @@ pub fn replace_session(
   config: SessionConfig,
   res: wisp.Response,
   req: wisp.Request,
-  new_session: Session,
+  new_session: session_builder.Session,
 ) {
   use _ <- result.try(delete_session(config, req))
   use _ <- result.map(config.store.save_session(new_session))
@@ -194,7 +159,11 @@ pub fn middleware(
   case get_session_id(config, req) {
     Ok(_) -> handle_request(req)
     Error(_) -> {
-      let session = session_new(config.default_expiry)
+      let session =
+        session_builder.builder()
+        |> session_builder.with_expiry(config.default_expiry)
+        |> session_builder.build()
+
       // Try to save the session and fail silently
       let _ = config.store.save_session
 
@@ -223,7 +192,7 @@ pub fn middleware(
 pub fn inject_session_cookie(
   config config: SessionConfig,
   request req: wisp.Request,
-  value session_id: SessionId,
+  value session_id: session_id.SessionId,
   security security: wisp.Security,
 ) -> wisp.Request {
   let value = session_id.to_string(session_id)
@@ -240,7 +209,7 @@ pub fn set_session_cookie(
   config: SessionConfig,
   response: wisp.Response,
   req: wisp.Request,
-  session: Session,
+  session: session_builder.Session,
 ) {
   wisp.set_cookie(
     response,
@@ -256,16 +225,6 @@ fn get_session_id(config: SessionConfig, req: wisp.Request) {
   wisp.get_cookie(req, config.cookie_name, wisp.Signed)
   |> result.replace_error(NoSessionCookieError)
   |> result.map(session_id.SessionId)
-}
-
-pub fn expiry_to_date(expiry: Expiry) {
-  case expiry {
-    ExpireAt(time) -> time
-    ExpireIn(seconds) -> {
-      birl.now()
-      |> birl.add(duration.seconds(seconds))
-    }
-  }
 }
 
 fn seconds_from_now(time: birl.Time) {
