@@ -3,26 +3,27 @@ import gleam/erlang/process
 import gleam/option
 import gleam/otp/actor
 import gleam/result
+import internal/session_id
 import max_wisp_sessions as sessions
-import session_builder
+import session
 
 const timeout = 3000
 
 type Message(element) {
   Shutdown
   GetSession(
-    reply_with: process.Subject(Result(session_builder.Session, Nil)),
-    session_id: session_builder.SessionId,
+    reply_with: process.Subject(Result(session.Session, Nil)),
+    session_id: session.SessionId,
   )
   SetSession(
-    reply_with: process.Subject(session_builder.Session),
-    session: session_builder.Session,
+    reply_with: process.Subject(session.Session),
+    session: session.Session,
   )
-  DeleteSession(session_id: session_builder.SessionId)
+  DeleteSession(session_id: session.SessionId)
 }
 
 type Db =
-  dict.Dict(session_builder.SessionId, session_builder.Session)
+  dict.Dict(session_id.SessionId, session.Session)
 
 pub fn try_create_session_store() {
   use db <- result.map(
@@ -38,7 +39,7 @@ pub fn try_create_session_store() {
 }
 
 fn get_session(db: process.Subject(Message(a))) {
-  fn(session_id: session_builder.SessionId) {
+  fn(session_id: session.SessionId) {
     Ok(
       process.call(db, fn(client) { GetSession(client, session_id) }, timeout)
       |> result.map(fn(session) { option.Some(session) })
@@ -49,13 +50,13 @@ fn get_session(db: process.Subject(Message(a))) {
 }
 
 fn save_session(db: process.Subject(Message(a))) {
-  fn(session: session_builder.Session) {
+  fn(session: session.Session) {
     Ok(process.call(db, fn(client) { SetSession(client, session) }, timeout))
   }
 }
 
 fn delete_session(db: process.Subject(Message(a))) {
-  fn(session_id: session_builder.SessionId) {
+  fn(session_id: session.SessionId) {
     process.send(db, DeleteSession(session_id))
     Ok(Nil)
   }

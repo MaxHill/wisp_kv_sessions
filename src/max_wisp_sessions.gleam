@@ -11,14 +11,14 @@ import gleam/list
 import gleam/option
 import gleam/result
 import internal/session_id
-import session_builder
+import session
 import wisp
 
 // Config
 //---------------------
 pub type SessionConfig {
   SessionConfig(
-    default_expiry: session_builder.Expiry,
+    default_expiry: session.Expiry,
     cookie_name: String,
     store: SessionStore,
   )
@@ -31,10 +31,9 @@ pub type SessionStore {
   SessionStore(
     default_expiry: Int,
     get_session: fn(session_id.SessionId) ->
-      Result(option.Option(session_builder.Session), SessionError),
-    save_session: fn(session_builder.Session) ->
-      Result(session_builder.Session, SessionError),
-    delete_session: fn(session_builder.SessionId) -> Result(Nil, SessionError),
+      Result(option.Option(session.Session), SessionError),
+    save_session: fn(session.Session) -> Result(session.Session, SessionError),
+    delete_session: fn(session_id.SessionId) -> Result(Nil, SessionError),
   )
 }
 
@@ -57,10 +56,10 @@ pub fn get_session(config: SessionConfig, req: wisp.Request) {
   case maybe_session {
     option.Some(session) -> Ok(session)
     option.None ->
-      session_builder.builder()
-      |> session_builder.with_id(session_id)
-      |> session_builder.with_expiry(config.default_expiry)
-      |> session_builder.build
+      session.builder()
+      |> session.with_id(session_id)
+      |> session.with_expiry(config.default_expiry)
+      |> session.build
       |> config.store.save_session
   }
 }
@@ -80,11 +79,11 @@ pub fn delete_session(config: SessionConfig, req: wisp.Request) {
 pub fn get(
   config: SessionConfig,
   req: wisp.Request,
-  key: session_builder.Key,
+  key: session.Key,
   decoder: Decoder(data),
 ) {
   use session <- result.try(get_session(config, req))
-  case session_builder.session_get(session, key) |> option.from_result {
+  case session.session_get(session, key) |> option.from_result {
     option.None -> Ok(option.None)
     option.Some(data) -> {
       json.decode(from: json.to_string(data), using: decoder)
@@ -99,30 +98,26 @@ pub fn get(
 pub fn set(
   config: SessionConfig,
   req: wisp.Request,
-  key: session_builder.Key,
+  key: session.Key,
   data: data,
   encoder: fn(data) -> json.Json,
 ) {
   use session <- result.try(get_session(config, req))
   let json_data = encoder(data)
   let new_session =
-    session_builder.builder_from(session)
-    |> session_builder.set_key_value(key, json_data)
-    |> session_builder.build
+    session.builder_from(session)
+    |> session.set_key_value(key, json_data)
+    |> session.build
   use _ <- result.map(config.store.save_session(new_session))
   data
 }
 
 /// Delete key from session
 ///
-pub fn delete(
-  config: SessionConfig,
-  req: wisp.Request,
-  key: session_builder.Key,
-) {
+pub fn delete(config: SessionConfig, req: wisp.Request, key: session.Key) {
   use session <- result.try(get_session(config, req))
   config.store.save_session(
-    session_builder.Session(..session, data: dict.delete(session.data, key)),
+    session.Session(..session, data: dict.delete(session.data, key)),
   )
 }
 
@@ -136,7 +131,7 @@ pub fn replace_session(
   config: SessionConfig,
   res: wisp.Response,
   req: wisp.Request,
-  new_session: session_builder.Session,
+  new_session: session.Session,
 ) {
   use _ <- result.try(delete_session(config, req))
   use _ <- result.map(config.store.save_session(new_session))
@@ -160,9 +155,9 @@ pub fn middleware(
     Ok(_) -> handle_request(req)
     Error(_) -> {
       let session =
-        session_builder.builder()
-        |> session_builder.with_expiry(config.default_expiry)
-        |> session_builder.build()
+        session.builder()
+        |> session.with_expiry(config.default_expiry)
+        |> session.build()
 
       // Try to save the session and fail silently
       let _ = config.store.save_session
@@ -209,7 +204,7 @@ pub fn set_session_cookie(
   config: SessionConfig,
   response: wisp.Response,
   req: wisp.Request,
-  session: session_builder.Session,
+  session: session.Session,
 ) {
   wisp.set_cookie(
     response,
