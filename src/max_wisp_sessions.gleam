@@ -58,16 +58,8 @@ pub fn session_expires_at(session: Session) {
   session.expires_at
 }
 
-// Errors
-pub type SessionError {
-  UnknownError
-  DecodeError
-  DbSetupError
-  DbError
-  NoSessionCookieError
-}
-
 // Config
+//---------------------
 pub type SessionConfig {
   SessionConfig(
     default_expiry: Expiry,
@@ -82,12 +74,21 @@ pub type SessionConfig {
 pub type SessionStore {
   SessionStore(
     default_expiry: Int,
-    get_session: fn(session_id.SessionId) -> option.Option(Session),
-    create_session: fn(Session) -> Result(Session, SessionError),
-    get: fn(session_id.SessionId, Key) -> option.Option(json.Json),
-    set: fn(session_id.SessionId, Key, json.Json) -> Result(Nil, SessionError),
-    delete: fn(session_id.SessionId) -> Result(Nil, SessionError),
+    get_session: fn(session_id.SessionId) ->
+      Result(option.Option(Session), SessionError),
+    save_session: fn(Session) -> Result(Session, SessionError),
+    delete_session: fn(SessionId) -> Result(Nil, SessionError),
   )
+}
+
+// Errors
+//---------------------
+pub type SessionError {
+  UnknownError
+  DecodeError
+  DbSetupError
+  DbError
+  NoSessionCookieError
 }
 
 /// Try to get the session from the store. 
@@ -95,15 +96,25 @@ pub type SessionStore {
 ///
 pub fn get_session(config: SessionConfig, req: wisp.Request) {
   use session_id <- result.try(get_session_id(config, req))
-  let maybe_session = config.store.get_session(session_id)
+  use maybe_session <- result.try(config.store.get_session(session_id))
   case maybe_session {
     option.Some(session) -> Ok(session)
     option.None ->
-      config.store.create_session(session_new_with_id(
+      config.store.save_session(session_new_with_id(
         session_id,
         config.default_expiry,
       ))
   }
+}
+
+/// Remove session
+/// Usage: 
+/// ```gleam
+/// sessions.delete(store, req)
+/// ```
+pub fn delete_session(config: SessionConfig, req: wisp.Request) {
+  use session_id <- result.try(get_session_id(config, req))
+  config.store.delete_session(session_id)
 }
 
 /// Get data from session by key
@@ -113,15 +124,15 @@ pub fn get(
   req: wisp.Request,
   key: Key,
   decoder: Decoder(data),
-) -> Result(option.Option(data), SessionError) {
-  use session_id <- result.try(get_session_id(config, req))
-  case config.store.get(session_id, key) {
+) {
+  use session <- result.try(get_session(config, req))
+  case session_get(session, key) |> option.from_result {
+    option.None -> Ok(option.None)
     option.Some(data) -> {
       json.decode(from: json.to_string(data), using: decoder)
       |> result.replace_error(DecodeError)
-      |> result.map(fn(v) { option.Some(v) })
+      |> result.map(fn(d) { option.Some(d) })
     }
-    option.None -> Ok(option.None)
   }
 }
 
@@ -134,20 +145,37 @@ pub fn set(
   data: data,
   encoder: fn(data) -> json.Json,
 ) {
-  use session_id <- result.try(get_session_id(config, req))
+  use session <- result.try(get_session(config, req))
   let json_data = encoder(data)
-  use _ <- result.map(config.store.set(session_id, key, json_data))
+  let new_session = session_set_key_value(session, key, json_data)
+  use _ <- result.map(config.store.save_session(new_session))
   data
 }
 
-/// Remove session
-/// Usage: 
+/// Delete key from session
+///
+pub fn delete(config: SessionConfig, req: wisp.Request, key: Key) {
+  use session <- result.try(get_session(config, req))
+  config.store.save_session(
+    Session(..session, data: dict.delete(session.data, key)),
+  )
+}
+
+/// Replace the session with a new one
+/// Usage:
 /// ```gleam
-/// sessions.delete(store, req)
+/// wisp.ok() |> replace_session(session_config, req)
 /// ```
-pub fn delete(config: SessionConfig, req: wisp.Request) {
-  use session_id <- result.try(get_session_id(config, req))
-  config.store.delete(session_id)
+///
+pub fn replace_session(
+  config: SessionConfig,
+  res: wisp.Response,
+  req: wisp.Request,
+  new_session: Session,
+) {
+  use _ <- result.try(delete_session(config, req))
+  use _ <- result.map(config.store.save_session(new_session))
+  set_session_cookie(config, res, req, new_session)
 }
 
 // Middleware
@@ -156,34 +184,33 @@ pub fn delete(config: SessionConfig, req: wisp.Request) {
 /// always is a session_id to store data towards
 /// Usage: 
 /// ```gleam
-/// use <- sessions.middleware(req)
+/// use <- sessions.middleware(config, req)
 /// ```
-pub fn create_middleware(config: SessionConfig) {
-  fn(req: wisp.Request, handle_request: fn(wisp.Request) -> wisp.Response) -> wisp.Response {
-    case get_session_id(config, req) {
-      Ok(_) -> handle_request(req)
-      Error(_) -> {
-        let session_id = session_id.generate()
-        let res =
-          inject_session_cookie(config, req, session_id, wisp.Signed)
-          |> handle_request
+pub fn middleware(
+  config: SessionConfig,
+  req: wisp.Request,
+  handle_request: fn(wisp.Request) -> wisp.Response,
+) {
+  case get_session_id(config, req) {
+    Ok(_) -> handle_request(req)
+    Error(_) -> {
+      let session = session_new(config.default_expiry)
+      // Try to save the session and fail silently
+      let _ = config.store.save_session
 
-        // Only set the cookie if it has not already been set in the handler
-        res
-        |> response.get_cookies
-        |> list.key_find(config.cookie_name)
-        |> fn(cookie) {
-          case cookie {
-            Ok(_) -> res
-            Error(_) -> {
-              set_session_cookie(
-                config,
-                res,
-                req,
-                session_id,
-                seconds_from_now(config.default_expiry),
-              )
-            }
+      let res =
+        inject_session_cookie(config, req, session.id, wisp.Signed)
+        |> handle_request
+
+      // Only set the cookie if it has not already been set in the handler
+      res
+      |> response.get_cookies
+      |> list.key_find(config.cookie_name)
+      |> fn(cookie) {
+        case cookie {
+          Ok(_) -> res
+          Error(_) -> {
+            set_session_cookie(config, res, req, session)
           }
         }
       }
@@ -213,16 +240,15 @@ pub fn set_session_cookie(
   config: SessionConfig,
   response: wisp.Response,
   req: wisp.Request,
-  session_id: session_id.SessionId,
-  expires_in: Int,
+  session: Session,
 ) {
   wisp.set_cookie(
     response,
     req,
     config.cookie_name,
-    session_id.to_string(session_id),
+    session_id.to_string(session.id),
     wisp.Signed,
-    expires_in,
+    seconds_from_now(session.expires_at),
   )
 }
 
@@ -232,7 +258,7 @@ fn get_session_id(config: SessionConfig, req: wisp.Request) {
   |> result.map(session_id.SessionId)
 }
 
-fn expiry_to_date(expiry: Expiry) {
+pub fn expiry_to_date(expiry: Expiry) {
   case expiry {
     ExpireAt(time) -> time
     ExpireIn(seconds) -> {
@@ -242,8 +268,8 @@ fn expiry_to_date(expiry: Expiry) {
   }
 }
 
-fn seconds_from_now(time: Expiry) {
-  expiry_to_date(time)
+fn seconds_from_now(time: birl.Time) {
+  time
   |> birl.difference(birl.now())
   |> duration.blur_to(duration.Second)
 }
