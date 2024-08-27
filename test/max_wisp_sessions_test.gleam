@@ -9,6 +9,8 @@ import gleam/list
 import gleam/result
 import gleeunit
 import gleeunit/should
+import internal
+import internal/session_error
 import internal/session_id
 import max_wisp_sessions as sessions
 import memory_store
@@ -32,20 +34,19 @@ pub fn return_an_error_if_no_session_cookie_exist_test() {
     test_obj_to_json,
   )
   |> should.be_error
-  |> should.equal(sessions.NoSessionCookieError)
+  |> should.equal(session_error.NoSessionCookieError)
 }
 
 pub fn set_a_value_in_the_session_test() {
   use #(session_config, memory_store, expires_at) <- result.map(
     test_session_config(),
   )
-  use _ <- result.map(
-    memory_store.save_session(session.Session(
-      id: session_id.SessionId("TEST_SESSION_ID"),
-      expires_at: expires_at,
-      data: dict.new(),
-    )),
-  )
+  use _ <- result.map(memory_store.save_session(
+    session.builder()
+    |> session.with_id_string("TEST_SESSION_ID")
+    |> session.with_expires_at(expires_at)
+    |> session.build,
+  ))
   let req =
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
@@ -60,13 +61,12 @@ pub fn get_a_value_from_the_session_test() {
   use #(session_config, memory_store, expires_at) <- result.map(
     test_session_config(),
   )
-  use _ <- result.map(
-    memory_store.save_session(session.Session(
-      id: session_id.SessionId("TEST_SESSION_ID"),
-      expires_at: expires_at,
-      data: dict.new(),
-    )),
-  )
+  use _ <- result.map(memory_store.save_session(
+    session.builder()
+    |> session.with_id_string("TEST_SESSION_ID")
+    |> session.with_expires_at(expires_at)
+    |> session.build,
+  ))
   let req =
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
@@ -93,6 +93,15 @@ pub fn delete_a_key_from_session_test() {
       data: dict.from_list([#("test_key", test_obj_to_json(TestObj("test")))]),
     )),
   )
+  use _ <- result.map(memory_store.save_session(
+    session.builder()
+    |> session.with_id_string("TEST_SESSION_ID")
+    |> session.with_expires_at(expires_at)
+    |> session.with_data(
+      dict.from_list([#("test_key", test_obj_to_json(TestObj("test")))]),
+    )
+    |> session.build,
+  ))
 
   let req =
     testing.get("/", [])
@@ -189,8 +198,8 @@ pub fn inject_a_cookie_in_a_request_test() {
 
   let req =
     testing.get("/", [])
-    |> sessions.inject_session_cookie(
-      session_config,
+    |> internal.inject_session_cookie(
+      session_config.cookie_name,
       _,
       session_id.SessionId("session_id"),
       wisp.Signed,
@@ -230,8 +239,8 @@ pub fn middleware_dont_set_cookie_if_its_set_in_handler_test() {
     _,
     fn(req) {
       wisp.ok()
-      |> sessions.set_session_cookie(
-        session_config,
+      |> internal.set_session_cookie(
+        session_config.cookie_name,
         _,
         req,
         session.builder()

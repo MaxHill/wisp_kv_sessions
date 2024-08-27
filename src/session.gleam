@@ -72,6 +72,10 @@ pub fn with_expiry(session: SessionBuilder, expiry: Expiry) {
   SessionBuilder(..session, expiry: option.Some(expiry))
 }
 
+pub fn with_expires_at(session: SessionBuilder, expires_at: birl.Time) {
+  SessionBuilder(..session, expiry: option.Some(ExpireAt(expires_at)))
+}
+
 pub fn with_data(session: SessionBuilder, data: dict.Dict(Key, json.Json)) {
   SessionBuilder(..session, data: data)
 }

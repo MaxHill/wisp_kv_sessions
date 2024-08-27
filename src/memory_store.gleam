@@ -3,6 +3,7 @@ import gleam/erlang/process
 import gleam/option
 import gleam/otp/actor
 import gleam/result
+import internal/session_error
 import internal/session_id
 import max_wisp_sessions as sessions
 import session
@@ -28,7 +29,7 @@ type Db =
 pub fn try_create_session_store() {
   use db <- result.map(
     actor.start(dict.new(), handle_message)
-    |> result.replace_error(sessions.DbSetupError),
+    |> result.replace_error(session_error.DbSetupError),
   )
   sessions.SessionStore(
     default_expiry: 60 * 60,

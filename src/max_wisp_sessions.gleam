@@ -1,15 +1,12 @@
-import birl
-import birl/duration
-import gleam/bit_array
-import gleam/crypto
 import gleam/dict
 import gleam/dynamic.{type Decoder}
-import gleam/http/request
 import gleam/http/response
 import gleam/json
 import gleam/list
 import gleam/option
 import gleam/result
+import internal
+import internal/session_error
 import internal/session_id
 import session
 import wisp
@@ -24,8 +21,8 @@ pub type SessionConfig {
   )
 }
 
-/// Session store is the datalayer implementation used
-/// when calling session methods
+/// Session store is what the different storages should implement.
+/// It is used when saving and getting session
 ///
 pub type SessionStore {
   SessionStore(
@@ -37,21 +34,14 @@ pub type SessionStore {
   )
 }
 
-// Errors
-//---------------------
-pub type SessionError {
-  UnknownError
-  DecodeError
-  DbSetupError
-  DbError
-  NoSessionCookieError
-}
+pub type SessionError =
+  session_error.SessionError
 
 /// Try to get the session from the store. 
 /// If it does not exist create a new one.
 ///
 pub fn get_session(config: SessionConfig, req: wisp.Request) {
-  use session_id <- result.try(get_session_id(config, req))
+  use session_id <- result.try(internal.get_session_id(config.cookie_name, req))
   use maybe_session <- result.try(config.store.get_session(session_id))
   case maybe_session {
     option.Some(session) -> Ok(session)
@@ -70,7 +60,7 @@ pub fn get_session(config: SessionConfig, req: wisp.Request) {
 /// sessions.delete(store, req)
 /// ```
 pub fn delete_session(config: SessionConfig, req: wisp.Request) {
-  use session_id <- result.try(get_session_id(config, req))
+  use session_id <- result.try(internal.get_session_id(config.cookie_name, req))
   config.store.delete_session(session_id)
 }
 
@@ -87,7 +77,7 @@ pub fn get(
     option.None -> Ok(option.None)
     option.Some(data) -> {
       json.decode(from: json.to_string(data), using: decoder)
-      |> result.replace_error(DecodeError)
+      |> result.replace_error(session_error.DecodeError)
       |> result.map(fn(d) { option.Some(d) })
     }
   }
@@ -135,7 +125,7 @@ pub fn replace_session(
 ) {
   use _ <- result.try(delete_session(config, req))
   use _ <- result.map(config.store.save_session(new_session))
-  set_session_cookie(config, res, req, new_session)
+  internal.set_session_cookie(config.cookie_name, res, req, new_session)
 }
 
 // Middleware
@@ -151,7 +141,7 @@ pub fn middleware(
   req: wisp.Request,
   handle_request: fn(wisp.Request) -> wisp.Response,
 ) {
-  case get_session_id(config, req) {
+  case internal.get_session_id(config.cookie_name, req) {
     Ok(_) -> handle_request(req)
     Error(_) -> {
       let session =
@@ -163,7 +153,12 @@ pub fn middleware(
       let _ = config.store.save_session
 
       let res =
-        inject_session_cookie(config, req, session.id, wisp.Signed)
+        internal.inject_session_cookie(
+          config.cookie_name,
+          req,
+          session.id,
+          wisp.Signed,
+        )
         |> handle_request
 
       // Only set the cookie if it has not already been set in the handler
@@ -174,56 +169,10 @@ pub fn middleware(
         case cookie {
           Ok(_) -> res
           Error(_) -> {
-            set_session_cookie(config, res, req, session)
+            internal.set_session_cookie(config.cookie_name, res, req, session)
           }
         }
       }
     }
   }
-}
-
-/// Inject a cookie into a request
-/// This will NOT be persisted between requests
-pub fn inject_session_cookie(
-  config config: SessionConfig,
-  request req: wisp.Request,
-  value session_id: session_id.SessionId,
-  security security: wisp.Security,
-) -> wisp.Request {
-  let value = session_id.to_string(session_id)
-  let value = case security {
-    wisp.PlainText -> bit_array.base64_encode(<<value:utf8>>, False)
-    wisp.Signed -> wisp.sign_message(req, <<value:utf8>>, crypto.Sha512)
-  }
-  req
-  |> request.set_cookie(config.cookie_name, value)
-}
-
-// Helpers
-pub fn set_session_cookie(
-  config: SessionConfig,
-  response: wisp.Response,
-  req: wisp.Request,
-  session: session.Session,
-) {
-  wisp.set_cookie(
-    response,
-    req,
-    config.cookie_name,
-    session_id.to_string(session.id),
-    wisp.Signed,
-    seconds_from_now(session.expires_at),
-  )
-}
-
-fn get_session_id(config: SessionConfig, req: wisp.Request) {
-  wisp.get_cookie(req, config.cookie_name, wisp.Signed)
-  |> result.replace_error(NoSessionCookieError)
-  |> result.map(session_id.SessionId)
-}
-
-fn seconds_from_now(time: birl.Time) {
-  time
-  |> birl.difference(birl.now())
-  |> duration.blur_to(duration.Second)
 }
