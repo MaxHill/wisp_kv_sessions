@@ -5,8 +5,8 @@ import gleam/otp/actor
 import gleam/result
 import internal/session_error
 import internal/session_id
-import max_wisp_sessions as sessions
-import session
+import wisp_kv_sessions
+import wisp_kv_sessions/session
 
 const timeout = 3000
 
@@ -31,7 +31,7 @@ pub fn try_create_session_store() {
     actor.start(dict.new(), handle_message)
     |> result.replace_error(session_error.DbSetupError),
   )
-  sessions.SessionStore(
+  wisp_kv_sessions.SessionStore(
     default_expiry: 60 * 60,
     get_session: get_session(db),
     save_session: save_session(db),

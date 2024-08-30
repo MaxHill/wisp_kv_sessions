@@ -5,11 +5,11 @@ import gleam/json
 import gleam/list
 import gleam/option
 import gleam/result
-import internal
 import internal/session_error
 import internal/session_id
-import session
+import internal/utils
 import wisp
+import wisp_kv_sessions/session
 
 // Config
 //---------------------
@@ -41,7 +41,7 @@ pub type SessionError =
 /// If it does not exist create a new one.
 ///
 pub fn get_session(config: SessionConfig, req: wisp.Request) {
-  use session_id <- result.try(internal.get_session_id(config.cookie_name, req))
+  use session_id <- result.try(utils.get_session_id(config.cookie_name, req))
   use maybe_session <- result.try(config.store.get_session(session_id))
   case maybe_session {
     option.Some(session) -> Ok(session)
@@ -60,7 +60,7 @@ pub fn get_session(config: SessionConfig, req: wisp.Request) {
 /// sessions.delete(store, req)
 /// ```
 pub fn delete_session(config: SessionConfig, req: wisp.Request) {
-  use session_id <- result.try(internal.get_session_id(config.cookie_name, req))
+  use session_id <- result.try(utils.get_session_id(config.cookie_name, req))
   config.store.delete_session(session_id)
 }
 
@@ -125,7 +125,7 @@ pub fn replace_session(
 ) {
   use _ <- result.try(delete_session(config, req))
   use _ <- result.map(config.store.save_session(new_session))
-  internal.set_session_cookie(config.cookie_name, res, req, new_session)
+  utils.set_session_cookie(config.cookie_name, res, req, new_session)
 }
 
 // Middleware
@@ -141,7 +141,7 @@ pub fn middleware(
   req: wisp.Request,
   handle_request: fn(wisp.Request) -> wisp.Response,
 ) {
-  case internal.get_session_id(config.cookie_name, req) {
+  case utils.get_session_id(config.cookie_name, req) {
     Ok(_) -> handle_request(req)
     Error(_) -> {
       let session =
@@ -153,7 +153,7 @@ pub fn middleware(
       let _ = config.store.save_session
 
       let res =
-        internal.inject_session_cookie(
+        utils.inject_session_cookie(
           config.cookie_name,
           req,
           session.id,
@@ -169,7 +169,7 @@ pub fn middleware(
         case cookie {
           Ok(_) -> res
           Error(_) -> {
-            internal.set_session_cookie(config.cookie_name, res, req, session)
+            utils.set_session_cookie(config.cookie_name, res, req, session)
           }
         }
       }

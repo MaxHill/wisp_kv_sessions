@@ -3,20 +3,21 @@ import birl/duration
 import gleam/bit_array
 import gleam/dict
 import gleam/dynamic
+import gleam/http/request
 import gleam/http/response
 import gleam/json
 import gleam/list
 import gleam/result
 import gleeunit
 import gleeunit/should
-import internal
 import internal/session_error
 import internal/session_id
-import max_wisp_sessions as sessions
+import internal/utils
 import memory_store
-import session
 import wisp
 import wisp/testing
+import wisp_kv_sessions as sessions
+import wisp_kv_sessions/session
 
 pub fn main() {
   gleeunit.main()
@@ -198,7 +199,7 @@ pub fn inject_a_cookie_in_a_request_test() {
 
   let req =
     testing.get("/", [])
-    |> internal.inject_session_cookie(
+    |> utils.inject_session_cookie(
       session_config.cookie_name,
       _,
       session_id.SessionId("session_id"),
@@ -239,7 +240,7 @@ pub fn middleware_dont_set_cookie_if_its_set_in_handler_test() {
     _,
     fn(req) {
       wisp.ok()
-      |> internal.set_session_cookie(
+      |> utils.set_session_cookie(
         session_config.cookie_name,
         _,
         req,
@@ -252,6 +253,45 @@ pub fn middleware_dont_set_cookie_if_its_set_in_handler_test() {
   |> get_session_cookie_from_response(req)
   |> should.be_ok
   |> should.equal(session_id.to_string(session_id))
+}
+
+pub fn should_override_exisiting_old_cookie_when_injecting_test() {
+  let req =
+    testing.get("/", [])
+    |> testing.set_cookie("SESSION_COOKIE", "NOT_VALID", wisp.PlainText)
+    |> utils.inject_session_cookie(
+      "SESSION_COOKIE",
+      _,
+      session_id.SessionId("VALID_ID"),
+      wisp.Signed,
+    )
+
+  wisp.get_cookie(req, "SESSION_COOKIE", wisp.Signed)
+  |> should.be_ok
+}
+
+pub fn remove_cookie_from_request_test() {
+  let req =
+    testing.get("", [])
+    |> request.set_cookie("FIRST_COOKIE", "first")
+    |> request.set_cookie("SECOND_COOKIE", "second")
+    |> request.set_cookie("THIRD_COOKIE", "third")
+
+  req
+  |> request.get_header("cookie")
+  |> should.be_ok
+  |> should.equal(
+    "FIRST_COOKIE=first; SECOND_COOKIE=second; THIRD_COOKIE=third",
+  )
+
+  let modified_req =
+    req
+    |> utils.remove_cookie("SECOND_COOKIE")
+
+  modified_req
+  |> request.get_header("cookie")
+  |> should.be_ok
+  |> should.equal("FIRST_COOKIE=first; THIRD_COOKIE=third")
 }
 
 // Helpers
