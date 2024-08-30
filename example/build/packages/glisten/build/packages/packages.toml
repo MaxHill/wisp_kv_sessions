@@ -1,0 +1,7 @@
+[packages]
+gleam_otp = "0.11.2"
+gleeunit = "1.2.0"
+gleam_stdlib = "0.40.0"
+logging = "1.3.0"
+telemetry = "1.3.0"
+gleam_erlang = "0.25.0"
