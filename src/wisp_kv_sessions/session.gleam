@@ -1,31 +1,59 @@
 import birl
 import birl/duration
 import gleam/dict
-import gleam/json
 import gleam/option
-import internal/session_id
+import wisp
 
-// Session type
+// Errors
+//---------------------
+pub type SessionError {
+  UnknownError
+  DecodeError
+  DbSetupError
+  DbErrorInsertError(String)
+  DbErrorGetError(String)
+  DbErrorDeleteError(String)
+  DeserializeError(String)
+  NoSessionCookieError
+}
+
+// Session id
+//---------------------
+pub opaque type SessionId {
+  SessionId(String)
+}
+
+/// Create a new session id
+pub fn generate_id() {
+  SessionId(wisp.random_string(200))
+}
+
+/// Unwrap session id to a string
+pub fn id_to_string(id: SessionId) {
+  case id {
+    SessionId(id_string) -> id_string
+  }
+}
+
+/// Unwrap session id to a string
+pub fn id_from_string(id: String) {
+  SessionId(id)
+}
+
+// Session 
+//---------------------
 type Key =
   String
 
-pub type SessionId =
-  session_id.SessionId
+type JsonString =
+  String
 
 pub type Session {
   Session(
-    id: session_id.SessionId,
-    expires_at: birl.Time,
-    data: dict.Dict(Key, json.Json),
+    id: SessionId,
+    expires_at: #(#(Int, Int, Int), #(Int, Int, Int)),
+    data: dict.Dict(Key, JsonString),
   )
-}
-
-pub fn session_get(session: Session, key: Key) {
-  dict.get(session.data, key)
-}
-
-pub fn session_expires_at(session: Session) {
-  session.expires_at
 }
 
 // Expiry
@@ -34,38 +62,48 @@ pub type Expiry {
   ExpireIn(Int)
 }
 
+/// Convert expiry type to a date
+pub fn expiry_to_date(expiry: Expiry) {
+  case expiry {
+    ExpireAt(time) -> time
+    ExpireIn(seconds) -> {
+      birl.now()
+      |> birl.add(duration.seconds(seconds))
+    }
+  }
+  |> birl.to_erlang_universal_datetime
+}
+
 // Session Builder
 //---------------------
 pub type SessionBuilder {
   SessionBuilder(
-    id: session_id.SessionId,
+    id: SessionId,
     expiry: option.Option(Expiry),
-    data: dict.Dict(Key, json.Json),
+    data: dict.Dict(Key, JsonString),
   )
 }
 
 pub fn builder_from(session: Session) {
   SessionBuilder(
     id: session.id,
-    expiry: option.Some(ExpireAt(session.expires_at)),
+    expiry: option.Some(
+      ExpireAt(birl.from_erlang_universal_datetime(session.expires_at)),
+    ),
     data: session.data,
   )
 }
 
 pub fn builder() {
-  SessionBuilder(
-    id: session_id.generate(),
-    expiry: option.None,
-    data: dict.new(),
-  )
+  SessionBuilder(id: generate_id(), expiry: option.None, data: dict.new())
 }
 
-pub fn with_id(session: SessionBuilder, id: session_id.SessionId) {
+pub fn with_id(session: SessionBuilder, id: SessionId) {
   SessionBuilder(..session, id: id)
 }
 
 pub fn with_id_string(session: SessionBuilder, id: String) {
-  SessionBuilder(..session, id: session_id.SessionId(id))
+  SessionBuilder(..session, id: SessionId(id))
 }
 
 pub fn with_expiry(session: SessionBuilder, expiry: Expiry) {
@@ -76,11 +114,11 @@ pub fn with_expires_at(session: SessionBuilder, expires_at: birl.Time) {
   SessionBuilder(..session, expiry: option.Some(ExpireAt(expires_at)))
 }
 
-pub fn with_data(session: SessionBuilder, data: dict.Dict(Key, json.Json)) {
+pub fn with_data(session: SessionBuilder, data: dict.Dict(Key, String)) {
   SessionBuilder(..session, data: data)
 }
 
-pub fn set_key_value(session, key, data) {
+pub fn set_key_value(session, key, data: String) {
   SessionBuilder(..session, data: dict.insert(session.data, key, data))
 }
 
@@ -91,14 +129,4 @@ pub fn build(session: SessionBuilder) {
     expires_at: expiry_to_date(expiry),
     data: session.data,
   )
-}
-
-pub fn expiry_to_date(expiry: Expiry) {
-  case expiry {
-    ExpireAt(time) -> time
-    ExpireIn(seconds) -> {
-      birl.now()
-      |> birl.add(duration.seconds(seconds))
-    }
-  }
 }

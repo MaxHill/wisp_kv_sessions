@@ -10,14 +10,13 @@ import gleam/list
 import gleam/result
 import gleeunit
 import gleeunit/should
-import internal/session_error
-import internal/session_id
 import internal/utils
 import memory_store
 import wisp
 import wisp/testing
 import wisp_kv_sessions as sessions
 import wisp_kv_sessions/session
+import wisp_kv_sessions/session_config as config
 
 pub fn main() {
   gleeunit.main()
@@ -35,7 +34,7 @@ pub fn return_an_error_if_no_session_cookie_exist_test() {
     test_obj_to_json,
   )
   |> should.be_error
-  |> should.equal(session_error.NoSessionCookieError)
+  |> should.equal(session.NoSessionCookieError)
 }
 
 pub fn set_a_value_in_the_session_test() {
@@ -86,11 +85,11 @@ pub fn delete_a_key_from_session_test() {
   use #(session_config, memory_store, expires_at) <- result.map(
     test_session_config(),
   )
-  let session_id = session_id.SessionId("TEST_SESSION_ID")
+  let session_id = session.id_from_string("TEST_SESSION_ID")
   use _ <- result.map(
     memory_store.save_session(session.Session(
       id: session_id,
-      expires_at: expires_at,
+      expires_at: birl.to_erlang_universal_datetime(expires_at),
       data: dict.from_list([#("test_key", test_obj_to_json(TestObj("test")))]),
     )),
   )
@@ -123,8 +122,8 @@ pub fn delete_a_session_test() {
   )
   use _ <- result.map(
     memory_store.save_session(session.Session(
-      id: session_id.SessionId("TEST_SESSION_ID"),
-      expires_at: expires_at,
+      id: session.id_from_string("TEST_SESSION_ID"),
+      expires_at: birl.to_erlang_universal_datetime(expires_at),
       data: dict.from_list([#("test_key", test_obj_to_json(TestObj("test")))]),
     )),
   )
@@ -144,7 +143,7 @@ pub fn creating_a_session_test() {
   use memory_store <- result.map(memory_store.try_create_session_store())
   let expires_at = birl.now() |> birl.add(duration.days(3))
   let session_config =
-    sessions.SessionConfig(
+    config.Config(
       default_expiry: session.ExpireAt(expires_at),
       cookie_name: "SESSION_COOKIE",
       store: memory_store,
@@ -157,19 +156,19 @@ pub fn creating_a_session_test() {
 
   session
   |> should.be_ok
-  |> session.session_expires_at
-  |> should.equal(expires_at)
+  |> fn(s: session.Session) { s.expires_at }
+  |> should.equal(birl.to_erlang_universal_datetime(expires_at))
 }
 
 pub fn replace_session_test() {
   use #(session_config, memory_store, expires_at) <- result.map(
     test_session_config(),
   )
-  let old_sesssion_id = session_id.SessionId("TEST_SESSION_ID")
+  let old_sesssion_id = session.id_from_string("TEST_SESSION_ID")
   use _ <- result.map(
     memory_store.save_session(session.Session(
       id: old_sesssion_id,
-      expires_at: expires_at,
+      expires_at: birl.to_erlang_universal_datetime(expires_at),
       data: dict.from_list([#("test_key", test_obj_to_json(TestObj("test")))]),
     )),
   )
@@ -183,7 +182,7 @@ pub fn replace_session_test() {
   |> should.be_ok
   |> get_session_cookie_from_response(req)
   |> should.be_ok
-  |> should.equal(session_id.to_string(new_session.id))
+  |> should.equal(session.id_to_string(new_session.id))
 
   memory_store.get_session(new_session.id)
   |> should.be_ok
@@ -202,7 +201,7 @@ pub fn inject_a_cookie_in_a_request_test() {
     |> utils.inject_session_cookie(
       session_config.cookie_name,
       _,
-      session_id.SessionId("session_id"),
+      session.id_from_string("session_id"),
       wisp.Signed,
     )
 
@@ -231,7 +230,7 @@ pub fn middleware_create_a_session_cookie_if_none_exist_test() {
 
 pub fn middleware_dont_set_cookie_if_its_set_in_handler_test() {
   use #(session_config, _, _) <- result.map(test_session_config())
-  let session_id = session_id.generate()
+  let session_id = session.generate_id()
   let req = testing.get("/", [])
 
   req
@@ -252,7 +251,7 @@ pub fn middleware_dont_set_cookie_if_its_set_in_handler_test() {
   )
   |> get_session_cookie_from_response(req)
   |> should.be_ok
-  |> should.equal(session_id.to_string(session_id))
+  |> should.equal(session.id_to_string(session_id))
 }
 
 pub fn should_override_exisiting_old_cookie_when_injecting_test() {
@@ -262,7 +261,7 @@ pub fn should_override_exisiting_old_cookie_when_injecting_test() {
     |> utils.inject_session_cookie(
       "SESSION_COOKIE",
       _,
-      session_id.SessionId("VALID_ID"),
+      session.id_from_string("VALID_ID"),
       wisp.Signed,
     )
 
@@ -301,6 +300,7 @@ pub type TestObj {
 
 fn test_obj_to_json(obj: TestObj) {
   json.object([#("test_field", json.string(obj.test_field))])
+  |> json.to_string
 }
 
 fn test_obj_from_json(json) {
@@ -325,7 +325,7 @@ fn test_session_config() {
   let expiration = birl.now() |> birl.add(duration.days(3))
   use memory_store <- result.map(memory_store.try_create_session_store())
   let session_config =
-    sessions.SessionConfig(
+    config.Config(
       default_expiry: session.ExpireAt(expiration),
       cookie_name: "SESSION_COOKIE",
       store: memory_store,

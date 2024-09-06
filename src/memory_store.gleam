@@ -3,10 +3,8 @@ import gleam/erlang/process
 import gleam/option
 import gleam/otp/actor
 import gleam/result
-import internal/session_error
-import internal/session_id
-import wisp_kv_sessions
 import wisp_kv_sessions/session
+import wisp_kv_sessions/session_config
 
 const timeout = 3000
 
@@ -24,14 +22,14 @@ type Message(element) {
 }
 
 type Db =
-  dict.Dict(session_id.SessionId, session.Session)
+  dict.Dict(session.SessionId, session.Session)
 
 pub fn try_create_session_store() {
   use db <- result.map(
     actor.start(dict.new(), handle_message)
-    |> result.replace_error(session_error.DbSetupError),
+    |> result.replace_error(session.DbSetupError),
   )
-  wisp_kv_sessions.SessionStore(
+  session_config.SessionStore(
     default_expiry: 60 * 60,
     get_session: get_session(db),
     save_session: save_session(db),
@@ -42,7 +40,7 @@ pub fn try_create_session_store() {
 fn get_session(db: process.Subject(Message(a))) {
   fn(session_id: session.SessionId) {
     Ok(
-      process.call(db, fn(client) { GetSession(client, session_id) }, timeout)
+      process.call(db, GetSession(_, session_id), timeout)
       |> result.map(fn(session) { option.Some(session) })
       |> option.from_result
       |> option.flatten,
@@ -52,7 +50,7 @@ fn get_session(db: process.Subject(Message(a))) {
 
 fn save_session(db: process.Subject(Message(a))) {
   fn(session: session.Session) {
-    Ok(process.call(db, fn(client) { SetSession(client, session) }, timeout))
+    Ok(process.call(db, SetSession(_, session), timeout))
   }
 }
 

@@ -5,42 +5,15 @@ import gleam/json
 import gleam/list
 import gleam/option
 import gleam/result
-import internal/session_error
-import internal/session_id
 import internal/utils
 import wisp
 import wisp_kv_sessions/session
-
-// Config
-//---------------------
-pub type SessionConfig {
-  SessionConfig(
-    default_expiry: session.Expiry,
-    cookie_name: String,
-    store: SessionStore,
-  )
-}
-
-/// Session store is what the different storages should implement.
-/// It is used when saving and getting session
-///
-pub type SessionStore {
-  SessionStore(
-    default_expiry: Int,
-    get_session: fn(session_id.SessionId) ->
-      Result(option.Option(session.Session), SessionError),
-    save_session: fn(session.Session) -> Result(session.Session, SessionError),
-    delete_session: fn(session_id.SessionId) -> Result(Nil, SessionError),
-  )
-}
-
-pub type SessionError =
-  session_error.SessionError
+import wisp_kv_sessions/session_config
 
 /// Try to get the session from the store. 
 /// If it does not exist create a new one.
 ///
-pub fn get_session(config: SessionConfig, req: wisp.Request) {
+pub fn get_session(config: session_config.Config, req: wisp.Request) {
   use session_id <- result.try(utils.get_session_id(config.cookie_name, req))
   use maybe_session <- result.try(config.store.get_session(session_id))
   case maybe_session {
@@ -59,7 +32,7 @@ pub fn get_session(config: SessionConfig, req: wisp.Request) {
 /// ```gleam
 /// sessions.delete(store, req)
 /// ```
-pub fn delete_session(config: SessionConfig, req: wisp.Request) {
+pub fn delete_session(config: session_config.Config, req: wisp.Request) {
   use session_id <- result.try(utils.get_session_id(config.cookie_name, req))
   config.store.delete_session(session_id)
 }
@@ -67,17 +40,17 @@ pub fn delete_session(config: SessionConfig, req: wisp.Request) {
 /// Get data from session by key
 ///
 pub fn get(
-  config: SessionConfig,
+  config: session_config.Config,
   req: wisp.Request,
   key: session.Key,
   decoder: Decoder(data),
 ) {
   use session <- result.try(get_session(config, req))
-  case session.session_get(session, key) |> option.from_result {
+  case dict.get(session.data, key) |> option.from_result {
     option.None -> Ok(option.None)
     option.Some(data) -> {
-      json.decode(from: json.to_string(data), using: decoder)
-      |> result.replace_error(session_error.DecodeError)
+      json.decode(from: data, using: decoder)
+      |> result.replace_error(session.DecodeError)
       |> result.map(fn(d) { option.Some(d) })
     }
   }
@@ -86,11 +59,11 @@ pub fn get(
 /// Set data in session by key
 ///
 pub fn set(
-  config: SessionConfig,
+  config: session_config.Config,
   req: wisp.Request,
   key: session.Key,
   data: data,
-  encoder: fn(data) -> json.Json,
+  encoder: fn(data) -> String,
 ) {
   use session <- result.try(get_session(config, req))
   let json_data = encoder(data)
@@ -104,7 +77,11 @@ pub fn set(
 
 /// Delete key from session
 ///
-pub fn delete(config: SessionConfig, req: wisp.Request, key: session.Key) {
+pub fn delete(
+  config: session_config.Config,
+  req: wisp.Request,
+  key: session.Key,
+) {
   use session <- result.try(get_session(config, req))
   config.store.save_session(
     session.Session(..session, data: dict.delete(session.data, key)),
@@ -118,7 +95,7 @@ pub fn delete(config: SessionConfig, req: wisp.Request, key: session.Key) {
 /// ```
 ///
 pub fn replace_session(
-  config: SessionConfig,
+  config: session_config.Config,
   res: wisp.Response,
   req: wisp.Request,
   new_session: session.Session,
@@ -137,7 +114,7 @@ pub fn replace_session(
 /// use <- sessions.middleware(config, req)
 /// ```
 pub fn middleware(
-  config: SessionConfig,
+  config: session_config.Config,
   req: wisp.Request,
   handle_request: fn(wisp.Request) -> wisp.Response,
 ) {

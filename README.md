@@ -23,6 +23,7 @@ import wisp
 import wisp/wisp_mist
 import wisp_kv_sessions
 import wisp_kv_sessions/session
+import wisp_kv_sessions/session_config
 
 pub fn main() {
   // Setup session_store
@@ -30,7 +31,7 @@ pub fn main() {
 
   // Create session config
   let session_config =
-    wisp_kv_sessions.SessionConfig(
+    session_config.Config(
       default_expiry: session.ExpireIn(60 * 60),
       cookie_name: "SESSION_COOKIE",
       store: memory_store,
@@ -49,7 +50,7 @@ pub fn main() {
 }
 
 pub fn handle_request(req: wisp.Request, session_config) -> wisp.Response {
-  use req <- middleware(req, _, session_config)
+  use req <- wisp_kv_sessions.middleware(session_config, req)
 
   case wisp.path_segments(req) {
     [] -> get_value_page(req, session_config)
@@ -58,20 +59,9 @@ pub fn handle_request(req: wisp.Request, session_config) -> wisp.Response {
   }
 }
 
-pub fn middleware(
-  req: wisp.Request,
-  handle_request: fn(wisp.Request) -> wisp.Response,
-  session_config: wisp_kv_sessions.SessionConfig,
-) -> wisp.Response {
-  // Add the middleware to handle sessions
-  use req <- wisp_kv_sessions.middleware(session_config, req, _)
-
-  handle_request(req)
-}
-
 fn get_value_page(
   req: wisp.Request,
-  session_config: wisp_kv_sessions.SessionConfig,
+  session_config: session_config.Config,
 ) -> wisp.Response {
   // Read value to the session
   let assert Ok(key) =
@@ -90,9 +80,14 @@ fn get_value_page(
   }
 }
 
+// Not nessesary for this simple type 
+fn encode_string(str: String) {
+  json.string(str) |> json.to_string
+}
+
 fn set_value_page(
   req: wisp.Request,
-  session_config: wisp_kv_sessions.SessionConfig,
+  session_config: session_config.Config,
 ) -> wisp.Response {
   // Set value to the session
   let _ =
@@ -101,7 +96,7 @@ fn set_value_page(
       req,
       "test_key",
       "something",
-      json.string,
+      encode_string,
     )
   wisp.redirect("/")
 }

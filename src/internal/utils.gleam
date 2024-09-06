@@ -7,8 +7,6 @@ import gleam/http/request
 import gleam/list
 import gleam/result
 import gleam/string
-import internal/session_error
-import internal/session_id
 import wisp
 import wisp_kv_sessions/session
 
@@ -38,10 +36,10 @@ pub fn remove_cookie(req: wisp.Request, name: String) {
 pub fn inject_session_cookie(
   cookie_name cookie_name: String,
   request req: wisp.Request,
-  value session_id: session_id.SessionId,
+  value session_id: session.SessionId,
   security security: wisp.Security,
 ) -> wisp.Request {
-  let value = session_id.to_string(session_id)
+  let value = session.id_to_string(session_id)
   let value = case security {
     wisp.PlainText -> bit_array.base64_encode(<<value:utf8>>, False)
     wisp.Signed -> wisp.sign_message(req, <<value:utf8>>, crypto.Sha512)
@@ -51,7 +49,7 @@ pub fn inject_session_cookie(
   |> request.set_cookie(cookie_name, value)
 }
 
-// Helpers
+/// Add session cookie to response 
 pub fn set_session_cookie(
   cookie_name: String,
   response: wisp.Response,
@@ -62,14 +60,15 @@ pub fn set_session_cookie(
     response,
     req,
     cookie_name,
-    session_id.to_string(session.id),
+    session.id_to_string(session.id),
     wisp.Signed,
     seconds_from_now(session.expires_at),
   )
 }
 
-fn seconds_from_now(time: birl.Time) {
+fn seconds_from_now(time: #(#(Int, Int, Int), #(Int, Int, Int))) {
   time
+  |> birl.from_erlang_universal_datetime
   |> birl.difference(birl.now())
   |> duration.blur_to(duration.Second)
 }
@@ -77,6 +76,6 @@ fn seconds_from_now(time: birl.Time) {
 /// Get session Id from cookie
 pub fn get_session_id(cookie_name: String, req: wisp.Request) {
   wisp.get_cookie(req, cookie_name, wisp.Signed)
-  |> result.replace_error(session_error.NoSessionCookieError)
-  |> result.map(session_id.SessionId)
+  |> result.replace_error(session.NoSessionCookieError)
+  |> result.map(session.id_from_string)
 }
