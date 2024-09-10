@@ -17,7 +17,14 @@ pub fn get_session(config: session_config.Config, req: wisp.Request) {
   use session_id <- result.try(utils.get_session_id(config.cookie_name, req))
   use maybe_session <- result.try(config.store.get_session(session_id))
   case maybe_session {
-    option.Some(session) -> Ok(session)
+    option.Some(session) -> {
+      case utils.is_session_expired(session) {
+        // cookie should expire at the same time the session
+        // does so we should not get expired sessions
+        True -> Error(session.SessionExpiredError)
+        False -> Ok(session)
+      }
+    }
     option.None ->
       session.builder()
       |> session.with_id(session_id)

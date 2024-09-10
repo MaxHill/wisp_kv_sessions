@@ -14,7 +14,8 @@ pub type SessionError {
   DbErrorGetError(String)
   DbErrorDeleteError(String)
   DeserializeError(String)
-  NoSessionCookieError
+  SessionExpiredError
+  NoSessionError
 }
 
 // Session id

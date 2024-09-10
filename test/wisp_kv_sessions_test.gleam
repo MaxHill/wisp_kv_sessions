@@ -34,7 +34,7 @@ pub fn return_an_error_if_no_session_cookie_exist_test() {
     test_obj_to_json,
   )
   |> should.be_error
-  |> should.equal(session.NoSessionCookieError)
+  |> should.equal(session.NoSessionError)
 }
 
 pub fn set_a_value_in_the_session_test() {
@@ -148,6 +148,7 @@ pub fn creating_a_session_test() {
       cookie_name: "SESSION_COOKIE",
       store: memory_store,
     )
+
   let req =
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
@@ -191,6 +192,30 @@ pub fn replace_session_test() {
   memory_store.get_session(old_sesssion_id)
   |> should.be_ok
   |> should.be_none
+}
+
+pub fn dont_get_expired_session_test() {
+  use #(session_config, memory_store, _) <- result.map(test_session_config())
+
+  let assert Ok(past_date) = birl.parse("1905-12-22 16:38:23-3")
+
+  let expired_session =
+    session.builder()
+    |> session.with_expires_at(past_date)
+    |> session.build
+
+  let assert Ok(_) = memory_store.save_session(expired_session)
+
+  let req =
+    testing.get("/", [])
+    |> testing.set_cookie(
+      "SESSION_COOKIE",
+      session.id_to_string(expired_session.id),
+      wisp.Signed,
+    )
+
+  sessions.get_session(session_config, req)
+  |> should.be_error
 }
 
 pub fn inject_a_cookie_in_a_request_test() {

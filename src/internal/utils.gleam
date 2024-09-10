@@ -5,6 +5,7 @@ import gleam/bool
 import gleam/crypto
 import gleam/http/request
 import gleam/list
+import gleam/order
 import gleam/result
 import gleam/string
 import wisp
@@ -76,6 +77,14 @@ fn seconds_from_now(time: #(#(Int, Int, Int), #(Int, Int, Int))) {
 /// Get session Id from cookie
 pub fn get_session_id(cookie_name: String, req: wisp.Request) {
   wisp.get_cookie(req, cookie_name, wisp.Signed)
-  |> result.replace_error(session.NoSessionCookieError)
+  |> result.replace_error(session.NoSessionError)
   |> result.map(session.id_from_string)
+}
+
+pub fn is_session_expired(session: session.Session) {
+  let expiry = birl.from_erlang_universal_datetime(session.expires_at)
+  case birl.compare(birl.now(), expiry) {
+    order.Gt -> True
+    _ -> False
+  }
 }
