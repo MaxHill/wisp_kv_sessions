@@ -1,7 +1,7 @@
 # wisp_kv_sessions
 
-[![Package Version](https://img.shields.io/hexpm/v/max_wisp_sessions)](https://hex.pm/packages/max_wisp_sessions)
-[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/max_wisp_sessions/)
+[![Package Version](https://img.shields.io/hexpm/v/wisp_kv_sessions)](https://hex.pm/packages/wisp_kv_sessions)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/wisp_kv_sessions/)
 
 
 # Overview

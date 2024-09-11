@@ -1,12 +1,12 @@
 name = "wisp_kv_sessions"
-version = "1.0.0"
+version = "0.0.1"
 
 # Fill out these fields if you intend to generate HTML documentation or publish
 # your project to the Hex package manager.
 #
-# description = ""
-# licences = ["Apache-2.0"]
-# repository = { type = "github", user = "", repo = "" }
+description = "wisp_kv_sessions is a key-value session management library for [Wisp](https://gleam-wisp.github.io/wisp/), inspired by the Rust crate [tower sessions](https://docs.rs/tower-sessions/latest/tower_sessions/#). This library allows you to manage user sessions with ease, storing session data in a simple key-value store."
+licences = ["Apache-2.0"]
+repository = { type = "github", user = "MaxHill", repo = "wisp_kv_sessions" }
 # links = [{ title = "Website", href = "" }]
 #
 # For a full reference of all the available options, you can have a look at

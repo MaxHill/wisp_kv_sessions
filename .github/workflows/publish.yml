@@ -1,0 +1,49 @@
+name: publish
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "26.0.2"
+          gleam-version: "1.4.1"
+          rebar3-version: "3"
+          # elixir-version: "1.15.4"
+      - run: gleam deps download
+      - run: gleam test
+      - run: gleam format --check src test
+
+  deploy: 
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "26.0.2"
+          gleam-version: "1.4.1"
+          rebar3-version: "3"
+          # elixir-version: "1.15.4"
+      
+      - name: Load secret
+        uses: 1password/load-secrets-action@v2
+        with:
+          # Export loaded secrets as environment variables
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: "${{secrets.OP_SERVICE_ACCOUNT_TOKEN}}"
+          HEXPM_USER: "op://wisp-kv-sessions/Hex/username"
+          HEXPM_PASS: "op://wisp-kv-sessions/Hex/password"
+
+
+      - name: Print masked secret
+        run: 'echo "USER: $HEXPM_USER", "PW: $HEXPM_PASS"'
+
+      - run: gleam publish --yes
