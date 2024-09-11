@@ -2,8 +2,8 @@ name: publish
 
 on:
   push:
-    branches:
-      - master
+    tags:        
+      - '*'
   pull_request:
 
 jobs:
@@ -22,6 +22,7 @@ jobs:
       - run: gleam format --check src test
 
   deploy: 
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,11 +40,7 @@ jobs:
           export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: "${{secrets.OP_SERVICE_ACCOUNT_TOKEN}}"
-          HEXPM_USER: "op://wisp-kv-sessions/Hex/username"
-          HEXPM_PASS: "op://wisp-kv-sessions/Hex/password"
-
-
-      - name: Print masked secret
-        run: 'echo "USER: $HEXPM_USER", "PW: $HEXPM_PASS"'
+          HEXPM_USER: "op://hex/Hex/username"
+          HEXPM_PASS: "op://hex/Hex/password"
 
       - run: gleam publish --yes
