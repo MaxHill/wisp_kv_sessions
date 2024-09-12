@@ -4,24 +4,24 @@ import gleam/json
 import gleam/option
 import gleam/result
 import gleam/string_builder
-import memory_store
 import mist
 import wisp
 import wisp/wisp_mist
 import wisp_kv_sessions
+import wisp_kv_sessions/actor_store
 import wisp_kv_sessions/session
 import wisp_kv_sessions/session_config
 
 pub fn main() {
   // Setup session_store
-  use memory_store <- result.map(memory_store.try_create_session_store())
+  use actor_store <- result.map(actor_store.try_create_session_store())
 
   // Create session config
   let session_config =
     session_config.Config(
       default_expiry: session.ExpireIn(60 * 60),
       cookie_name: "SESSION_COOKIE",
-      store: memory_store,
+      store: actor_store,
     )
 
   let secret_key_base = wisp.random_string(64)

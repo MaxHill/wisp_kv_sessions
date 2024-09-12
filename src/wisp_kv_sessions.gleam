@@ -5,8 +5,8 @@ import gleam/json
 import gleam/list
 import gleam/option
 import gleam/result
-import internal/utils
 import wisp
+import wisp_kv_sessions/internal/utils
 import wisp_kv_sessions/session
 import wisp_kv_sessions/session_config
 
