@@ -123,19 +123,43 @@ just watch-test # Run test and reload on file changes
 
 A SessionStore driver is a function that produces a SessionStore instance. These drivers allow for custom session storage solutions by applying methods to the SessionStore object, potentially using external resources like databases.
 
-For an example implementation, see ./src/actor_store.gleam.
+For an example implementation, see `./src/wisp_kv_sessions/actor_store.gleam`.
 
 ## Existing Drivers
 
 ### actor_store (Included by Default)
-The actor_store driver is suitable for development and testing purposes, but not recommended for production due to its non-concurrent nature. Internally, it uses an [Actor](https://hexdocs.pm/gleam_otp/gleam/otp/actor.html), which may become a bottleneck under heavy loads.
+The actor_store driver is suitable for development and testing purposes, 
+but not recommended for production due to its non-concurrent nature. 
+Internally, it uses an [Actor](https://hexdocs.pm/gleam_otp/gleam/otp/actor.html), 
+which may become a bottleneck under heavy loads.
 
 *Usage Example:*
 
 ```gleam
-use actor_store <- result.map(actor_store.try_create_session_store())
+use session_store <- result.map(actor_store.try_create_session_store())
+
+// ...
+```
+See `./example/src/app.gleam` for full example
+
+### postgress_store
+The postgres_store uses a [gleam/pgo](https://hexdocs.pm/gleam_pgo/gleam/pgo.html) 
+connection to store the session information in postgres.
+
+```sh
+gleam add wisp_kv_sessions_postgres_store
 ```
 
-### postgress_store (In Development)
+```gleam
+import wisp_kv_sessions/postgres_store
 
-A SessionStore driver for PostgreSQL is currently under development.
+let db = pgo.connect(pgo.default_config())
+// Migrate
+use _ <- result.try(postgres_store.migrate_up(conn))
+
+// Setup session_store
+use session_store <- result.map(postgres_store.try_create_session_store(conn))
+
+//...
+```
+Further documentation can be found at <https://hexdocs.pm/wisp_kv_sessions_postgres_store>.
