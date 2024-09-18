@@ -263,6 +263,32 @@ pub fn inject_a_cookie_in_a_request_test() {
   |> should.be_ok
 }
 
+pub fn middleware_should_create_the_session_in_the_db_test() {
+  use #(session_config, actor_store, _) <- result.map(
+    test_helpers.test_session_config(),
+  )
+
+  let req = testing.get("/", [])
+  let id =
+    req
+    |> wisp_kv_sessions.middleware(
+      session_config,
+      _,
+      fn(req) {
+        wisp.get_cookie(req, "SESSION_COOKIE", wisp.Signed)
+        |> should.be_ok
+
+        wisp.ok()
+      },
+    )
+    |> test_helpers.get_session_cookie_from_response(req)
+    |> should.be_ok
+
+  actor_store.get_session(session.id_from_string(id))
+  |> should.be_ok
+  |> should.be_some
+}
+
 pub fn middleware_create_a_session_cookie_if_none_exist_test() {
   use #(session_config, _, _) <- result.map(test_helpers.test_session_config())
 

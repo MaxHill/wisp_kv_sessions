@@ -15,6 +15,7 @@ import wisp_kv_sessions/session_config
 pub fn main() {
   // Setup session_store
   use actor_store <- result.map(actor_store.try_create_session_store())
+  use cache_store <- result.map(actor_store.try_create_session_store())
 
   // Create session config
   let session_config =
@@ -22,6 +23,7 @@ pub fn main() {
       default_expiry: session.ExpireIn(60 * 60),
       cookie_name: "SESSION_COOKIE",
       store: actor_store,
+      cache: option.Some(cache_store),
     )
 
   let secret_key_base = wisp.random_string(64)

@@ -8,6 +8,7 @@ pub type Config {
     default_expiry: session.Expiry,
     cookie_name: String,
     store: SessionStore,
+    cache: option.Option(SessionStore),
   )
 }
 
@@ -16,7 +17,6 @@ pub type Config {
 ///
 pub type SessionStore {
   SessionStore(
-    default_expiry: Int,
     get_session: fn(session.SessionId) ->
       Result(option.Option(session.Session), session.SessionError),
     save_session: fn(session.Session) ->
