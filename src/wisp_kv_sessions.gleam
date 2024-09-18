@@ -15,7 +15,12 @@ import wisp_kv_sessions/session_config
 ///
 pub fn get_session(config: session_config.Config, req: wisp.Request) {
   use session_id <- result.try(utils.get_session_id(config.cookie_name, req))
-  use maybe_session <- result.try(config.store.get_session(session_id))
+  use maybe_session <- result.try(get_session_with_cache(
+    session_id,
+    config,
+    True,
+  ))
+
   case maybe_session {
     option.Some(session) -> {
       case utils.is_session_expired(session) {
@@ -25,13 +30,41 @@ pub fn get_session(config: session_config.Config, req: wisp.Request) {
         False -> Ok(session)
       }
     }
-    option.None ->
-      session.builder()
-      |> session.with_id(session_id)
-      |> session.with_expiry(config.default_expiry)
-      |> session.build
-      |> config.store.save_session
+    option.None -> {
+      let session =
+        session.builder()
+        |> session.with_id(session_id)
+        |> session.with_expiry(config.default_expiry)
+        |> session.build
+
+      save_session(config, session)
+    }
   }
+}
+
+fn get_session_with_cache(
+  session_id: session.SessionId,
+  config: session_config.Config,
+  cache: Bool,
+) {
+  case cache, config.cache {
+    True, option.Some(cache) -> {
+      case cache.get_session(session_id) {
+        Ok(option.Some(session)) -> Ok(option.Some(session))
+        _ -> get_session_with_cache(session_id, config, False)
+      }
+    }
+    _, _ -> {
+      config.store.get_session(session_id)
+    }
+  }
+}
+
+fn save_session(config: session_config.Config, session: session.Session) {
+  config.cache
+  |> option.map(fn(cache) { cache.save_session(session) })
+
+  config.store.save_session(session)
 }
 
 /// Remove session
@@ -41,6 +74,8 @@ pub fn get_session(config: session_config.Config, req: wisp.Request) {
 /// ```
 pub fn delete_session(config: session_config.Config, req: wisp.Request) {
   use session_id <- result.try(utils.get_session_id(config.cookie_name, req))
+  config.cache
+  |> option.map(fn(cache) { cache.delete_session(session_id) })
   config.store.delete_session(session_id)
 }
 
@@ -78,7 +113,7 @@ pub fn set(
     session.builder_from(session)
     |> session.set_key_value(key, json_data)
     |> session.build
-  use _ <- result.map(config.store.save_session(new_session))
+  use _ <- result.map(save_session(config, new_session))
   data
 }
 
@@ -90,7 +125,8 @@ pub fn delete(
   key: session.Key,
 ) {
   use session <- result.try(get_session(config, req))
-  config.store.save_session(
+  save_session(
+    config,
     session.Session(..session, data: dict.delete(session.data, key)),
   )
 }
@@ -108,7 +144,7 @@ pub fn replace_session(
   new_session: session.Session,
 ) {
   use _ <- result.try(delete_session(config, req))
-  use _ <- result.map(config.store.save_session(new_session))
+  use _ <- result.map(save_session(config, new_session))
   utils.set_session_cookie(config.cookie_name, res, req, new_session)
 }
 
@@ -134,7 +170,7 @@ pub fn middleware(
         |> session.build()
 
       // Try to save the session and fail silently
-      let _ = config.store.save_session
+      let _ = config.store.save_session(session)
 
       let res =
         utils.inject_session_cookie(

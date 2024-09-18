@@ -30,7 +30,6 @@ pub fn try_create_session_store() {
     |> result.replace_error(session.DbSetupError),
   )
   session_config.SessionStore(
-    default_expiry: 60 * 60,
     get_session: get_session(db),
     save_session: save_session(db),
     delete_session: delete_session(db),

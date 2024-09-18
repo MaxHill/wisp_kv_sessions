@@ -28,6 +28,7 @@ import wisp_kv_sessions/session_config
 pub fn main() {
   // Setup session_store
   use actor_store <- result.map(actor_store.try_create_session_store())
+  use cache_store <- result.map(actor_store.try_create_session_store())
 
   // Create session config
   let session_config =
@@ -35,6 +36,7 @@ pub fn main() {
       default_expiry: session.ExpireIn(60 * 60),
       cookie_name: "SESSION_COOKIE",
       store: actor_store,
+      cache: option.Some(cache_store),
     )
 
   let secret_key_base = wisp.random_string(64)
@@ -119,23 +121,37 @@ gleam test  # Run the tests
 just watch-test # Run test and reload on file changes
 ```
 
-# SessionStore Drivers
+# Caching
 
-A SessionStore driver is a function that produces a SessionStore instance. These drivers allow for custom session storage solutions by applying methods to the SessionStore object, potentially using external resources like databases.
+A session config can be passed an optional cache parameter that is a `SessionStore`
+wrapped in an `option.Option`. If the cache is `option.Some` sessions will be 
+fetched from the cache. If the data is not in the cache the `store` will be 
+tried.
+
+Session data will be automatically added and removed from the cache.
+
+# SessionStore 
+
+A SessionStore is an type that can be used to implement different storage 
+providers, such as postgres/reddis/sqlite. You can use one of the prebuild 
+storage providers from down below, or implement a new one if the one you
+are looking for does not exist.
 
 For an example implementation, see `./src/wisp_kv_sessions/actor_store.gleam`.
 
-## Existing Drivers
+## Existing SessionStores
 
 ### actor_store (Included by Default)
 The actor_store driver is suitable for development and testing purposes, 
 but not recommended for production due to its non-concurrent nature. 
-Internally, it uses an [Actor](https://hexdocs.pm/gleam_otp/gleam/otp/actor.html), 
+Internally, it uses an [actor](https://hexdocs.pm/gleam_otp/gleam/otp/actor.html), 
 which may become a bottleneck under heavy loads.
 
 *Usage Example:*
 
 ```gleam
+import wisp_kv_sessions/actor_store
+
 use session_store <- result.map(actor_store.try_create_session_store())
 
 // ...
@@ -163,3 +179,24 @@ use session_store <- result.map(postgres_store.try_create_session_store(conn))
 //...
 ```
 Further documentation can be found at <https://hexdocs.pm/wisp_kv_sessions_postgres_store>.
+
+
+### ets_store
+
+The ets_store uses [Erlang Term Storage](https://www.erlang.org/doc/apps/stdlib/ets.html) 
+and [carpenter](https://hexdocs.pm/carpenter/) to store session information.
+*This will NOT be persistant after restarts*. But is a good option for caching.
+
+```sh
+gleam add wisp_kv_sessions_ets_store
+```
+
+```gleam
+import wisp_kv_sessions/ets_store
+
+// Setup session_store
+use session_store <- result.map(postgres_store.try_create_session_store(conn))
+
+//...
+```
+Further documentation can be found at <https://hexdocs.pm/wisp_kv_sessions_ets_store>.
