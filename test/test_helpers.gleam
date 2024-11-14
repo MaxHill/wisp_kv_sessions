@@ -3,16 +3,46 @@ import birl/duration
 import gleam/bit_array
 import gleam/dict
 import gleam/dynamic
+import gleam/erlang/os
 import gleam/http/response
+import gleam/int
+import gleam/io
 import gleam/json
 import gleam/list
 import gleam/option
 import gleam/result
 import gleeunit/should
+import pog
 import wisp
 import wisp_kv_sessions/actor_store
+import wisp_kv_sessions/postgres_store
 import wisp_kv_sessions/session
 import wisp_kv_sessions/session_config
+
+pub fn new_db() {
+  io.debug(os.get_all_env())
+  let db_host = os.get_env("DB_HOST") |> result.unwrap("127.0.0.1")
+  let db_password =
+    os.get_env("DB_PASSWORD") |> result.unwrap("mySuperSecretPassword!")
+  let db_user = os.get_env("DB_USER") |> result.unwrap("postgres")
+  let assert Ok(db_port) =
+    os.get_env("DB_PORT") |> result.unwrap("5432") |> int.parse
+  let db_name = os.get_env("DB_NAME") |> result.unwrap("postgres")
+
+  let db =
+    pog.default_config()
+    |> pog.host(db_host)
+    |> pog.database(db_name)
+    |> pog.port(db_port)
+    |> pog.user(db_user)
+    |> pog.password(option.Some(db_password))
+    |> pog.pool_size(1)
+    |> pog.connect()
+
+  let assert Ok(_) = postgres_store.migrate_down(db)
+  let assert Ok(_) = postgres_store.migrate_up(db)
+  db
+}
 
 pub type TestObj {
   TestObj(test_field: String)
@@ -57,7 +87,7 @@ pub fn get_session_cookie_from_response(res, req) {
 
 pub fn test_session_config() {
   let expiration = birl.now() |> birl.add(duration.days(3))
-  use actor_store <- result.map(actor_store.try_create_session_store())
+  use actor_store <- result.map(actor_store.new())
   let session_config =
     session_config.Config(
       default_expiry: session.ExpireAt(expiration),
@@ -71,8 +101,8 @@ pub fn test_session_config() {
 
 pub fn test_session_config_with_cache() {
   let expiration = birl.now() |> birl.add(duration.days(3))
-  use main_store <- result.try(actor_store.try_create_session_store())
-  use cache_store <- result.map(actor_store.try_create_session_store())
+  use main_store <- result.try(actor_store.new())
+  use cache_store <- result.map(actor_store.new())
 
   let session_config =
     session_config.Config(

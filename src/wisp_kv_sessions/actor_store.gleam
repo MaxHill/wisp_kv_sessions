@@ -24,7 +24,7 @@ type Message(element) {
 type Db =
   dict.Dict(session.SessionId, session.Session)
 
-pub fn try_create_session_store() {
+pub fn new() {
   use db <- result.map(
     actor.start(dict.new(), handle_message)
     |> result.replace_error(session.DbSetupError),

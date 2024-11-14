@@ -152,29 +152,28 @@ which may become a bottleneck under heavy loads.
 ```gleam
 import wisp_kv_sessions/actor_store
 
-use session_store <- result.map(actor_store.try_create_session_store())
+use session_store <- result.map(actor_store.new())
 
 // ...
 ```
 See `./example/src/app.gleam` for full example
 
 ### postgress_store
-The postgres_store uses a [gleam/pgo](https://hexdocs.pm/gleam_pgo/gleam/pgo.html) 
-connection to store the session information in postgres.
-
-```sh
-gleam add wisp_kv_sessions_postgres_store
-```
+Also included is the postgres_store, that allows you to use postgres as 
+the storage implementation
 
 ```gleam
 import wisp_kv_sessions/postgres_store
 
-let db = pgo.connect(pgo.default_config())
+let db = 
+  pog.default_config()
+  |> pog.connect()
+
 // Migrate
 use _ <- result.try(postgres_store.migrate_up(conn))
 
 // Setup session_store
-use session_store <- result.map(postgres_store.try_create_session_store(conn))
+use session_store <- result.map(postgres_store.new(conn))
 
 //...
 ```
@@ -187,15 +186,11 @@ The ets_store uses [Erlang Term Storage](https://www.erlang.org/doc/apps/stdlib/
 and [carpenter](https://hexdocs.pm/carpenter/) to store session information.
 *This will NOT be persistant after restarts*. But is a good option for caching.
 
-```sh
-gleam add wisp_kv_sessions_ets_store
-```
-
 ```gleam
 import wisp_kv_sessions/ets_store
 
 // Setup session_store
-use session_store <- result.map(postgres_store.try_create_session_store(conn))
+use session_store <- result.map(ets_store.new(conn))
 
 //...
 ```

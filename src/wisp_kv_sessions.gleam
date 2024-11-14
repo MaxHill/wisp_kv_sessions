@@ -111,7 +111,7 @@ pub fn set(
   let json_data = encoder(data)
   let new_session =
     session.builder_from(session)
-    |> session.set_key_value(key, json_data)
+    |> session.with_entry(key, json_data)
     |> session.build
   use _ <- result.map(save_session(config, new_session))
   data

@@ -119,7 +119,7 @@ pub fn with_data(session: SessionBuilder, data: dict.Dict(Key, String)) {
   SessionBuilder(..session, data: data)
 }
 
-pub fn set_key_value(session, key, data: String) {
+pub fn with_entry(session, key, data: String) {
   SessionBuilder(..session, data: dict.insert(session.data, key, data))
 }
 
