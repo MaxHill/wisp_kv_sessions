@@ -33,10 +33,10 @@ pub fn return_an_error_if_no_session_cookie_exist_test() {
 }
 
 pub fn set_a_value_in_the_session_test() {
-  use #(session_config, actor_store, expires_at) <- result.map(
+  use #(session_config, store, expires_at) <- result.map(
     test_helpers.test_session_config(),
   )
-  use _ <- result.map(actor_store.save_session(
+  use _ <- result.map(store.save_session(
     session.builder()
     |> session.with_id_string("TEST_SESSION_ID")
     |> session.with_expires_at(expires_at)
@@ -59,10 +59,10 @@ pub fn set_a_value_in_the_session_test() {
 }
 
 pub fn get_a_value_from_the_session_test() {
-  use #(session_config, actor_store, expires_at) <- result.map(
+  use #(session_config, store, expires_at) <- result.map(
     test_helpers.test_session_config(),
   )
-  use _ <- result.map(actor_store.save_session(
+  use _ <- result.map(store.save_session(
     session.builder()
     |> session.with_id_string("TEST_SESSION_ID")
     |> session.with_expires_at(expires_at)
@@ -94,12 +94,12 @@ pub fn get_a_value_from_the_session_test() {
 }
 
 pub fn delete_a_key_from_session_test() {
-  use #(session_config, actor_store, expires_at) <- result.map(
+  use #(session_config, store, expires_at) <- result.map(
     test_helpers.test_session_config(),
   )
   let session_id = session.id_from_string("TEST_SESSION_ID")
   use _ <- result.map(
-    actor_store.save_session(session.Session(
+    store.save_session(session.Session(
       id: session_id,
       expires_at: birl.to_erlang_universal_datetime(expires_at),
       data: dict.from_list([
@@ -110,7 +110,7 @@ pub fn delete_a_key_from_session_test() {
       ]),
     )),
   )
-  use _ <- result.map(actor_store.save_session(
+  use _ <- result.map(store.save_session(
     session.builder()
     |> session.with_id_string("TEST_SESSION_ID")
     |> session.with_expires_at(expires_at)
@@ -139,11 +139,11 @@ pub fn delete_a_key_from_session_test() {
 }
 
 pub fn delete_a_session_test() {
-  use #(session_config, actor_store, expires_at) <- result.map(
+  use #(session_config, actor_adapter, expires_at) <- result.map(
     test_helpers.test_session_config(),
   )
   use _ <- result.map(
-    actor_store.save_session(session.Session(
+    actor_adapter.save_session(session.Session(
       id: session.id_from_string("TEST_SESSION_ID"),
       expires_at: birl.to_erlang_universal_datetime(expires_at),
       data: dict.from_list([
@@ -167,7 +167,7 @@ pub fn delete_a_session_test() {
 }
 
 pub fn creating_a_session_test() {
-  use #(session_config, _actor_store, expires_at) <- result.map(
+  use #(session_config, _store, expires_at) <- result.map(
     test_helpers.test_session_config(),
   )
 
@@ -184,12 +184,12 @@ pub fn creating_a_session_test() {
 }
 
 pub fn replace_session_test() {
-  use #(session_config, actor_store, expires_at) <- result.map(
+  use #(session_config, actor_adapter, expires_at) <- result.map(
     test_helpers.test_session_config(),
   )
   let old_sesssion_id = session.id_from_string("TEST_SESSION_ID")
   use _ <- result.map(
-    actor_store.save_session(session.Session(
+    actor_adapter.save_session(session.Session(
       id: old_sesssion_id,
       expires_at: birl.to_erlang_universal_datetime(expires_at),
       data: dict.from_list([
@@ -212,17 +212,17 @@ pub fn replace_session_test() {
   |> should.be_ok
   |> should.equal(session.id_to_string(new_session.id))
 
-  actor_store.get_session(new_session.id)
+  actor_adapter.get_session(new_session.id)
   |> should.be_ok
   |> should.be_some
 
-  actor_store.get_session(old_sesssion_id)
+  actor_adapter.get_session(old_sesssion_id)
   |> should.be_ok
   |> should.be_none
 }
 
 pub fn dont_get_expired_session_test() {
-  use #(session_config, actor_store, _) <- result.map(
+  use #(session_config, actor_adapter, _) <- result.map(
     test_helpers.test_session_config(),
   )
 
@@ -233,7 +233,7 @@ pub fn dont_get_expired_session_test() {
     |> session.with_expires_at(past_date)
     |> session.build
 
-  let assert Ok(_) = actor_store.save_session(expired_session)
+  let assert Ok(_) = actor_adapter.save_session(expired_session)
 
   let req =
     testing.get("/", [])
@@ -264,7 +264,7 @@ pub fn inject_a_cookie_in_a_request_test() {
 }
 
 pub fn middleware_should_create_the_session_in_the_db_test() {
-  use #(session_config, actor_store, _) <- result.map(
+  use #(session_config, actor_adapter, _) <- result.map(
     test_helpers.test_session_config(),
   )
 
@@ -284,7 +284,7 @@ pub fn middleware_should_create_the_session_in_the_db_test() {
     |> test_helpers.get_session_cookie_from_response(req)
     |> should.be_ok
 
-  actor_store.get_session(session.id_from_string(id))
+  actor_adapter.get_session(session.id_from_string(id))
   |> should.be_ok
   |> should.be_some
 }

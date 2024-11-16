@@ -8,21 +8,21 @@ import mist
 import wisp
 import wisp/wisp_mist
 import wisp_kv_sessions
-import wisp_kv_sessions/actor_store
+import wisp_kv_sessions/actor_adapter
 import wisp_kv_sessions/session
 import wisp_kv_sessions/session_config
 
 pub fn main() {
-  // Setup session_store
-  use actor_store <- result.map(actor_store.try_create_session_store())
-  use cache_store <- result.map(actor_store.try_create_session_store())
+  // Setup session_adapter
+  use store <- result.map(actor_adapter.new())
+  use cache_store <- result.map(actor_adapter.new())
 
   // Create session config
   let session_config =
     session_config.Config(
       default_expiry: session.ExpireIn(60 * 60),
       cookie_name: "SESSION_COOKIE",
-      store: actor_store,
+      store:,
       cache: option.Some(cache_store),
     )
 

@@ -21,21 +21,21 @@ import mist
 import wisp
 import wisp/wisp_mist
 import wisp_kv_sessions
-import wisp_kv_sessions/actor_store
+import wisp_kv_sessions/actor_adapter
 import wisp_kv_sessions/session
 import wisp_kv_sessions/session_config
 
 pub fn main() {
   // Setup session_store
-  use actor_store <- result.map(actor_store.try_create_session_store())
-  use cache_store <- result.map(actor_store.try_create_session_store())
+  use actor_adapter <- result.map(actor_adapter.try_create_session_store())
+  use cache_store <- result.map(actor_adapter.try_create_session_store())
 
   // Create session config
   let session_config =
     session_config.Config(
       default_expiry: session.ExpireIn(60 * 60),
       cookie_name: "SESSION_COOKIE",
-      store: actor_store,
+      store: actor_adapter,
       cache: option.Some(cache_store),
     )
 
@@ -131,18 +131,18 @@ tried.
 Session data will be automatically added and removed from the cache.
 
 # SessionStore 
-
-A SessionStore is an type that can be used to implement different storage 
-providers, such as postgres/reddis/sqlite. You can use one of the prebuild 
-storage providers from down below, or implement a new one if the one you
+There are different places you may want to store sessions such as 
+postgres/ETS/sqlite. The way you integrate with them is through storage adapters 
+that implement the type SessionStore. You can use one of the prebuild storage 
+adapters from down below, or implement a new one if the one you
 are looking for does not exist.
 
-For an example implementation, see `./src/wisp_kv_sessions/actor_store.gleam`.
+For an example implementation, see `./src/wisp_kv_sessions/ets_adapter.gleam`.
 
-## Existing SessionStores
+## Included SessionStore adapters
 
-### actor_store (Included by Default)
-The actor_store driver is suitable for development and testing purposes, 
+### actor_adapter
+The actor_adapter driver is suitable for development and testing purposes, 
 but not recommended for production due to its non-concurrent nature. 
 Internally, it uses an [actor](https://hexdocs.pm/gleam_otp/gleam/otp/actor.html), 
 which may become a bottleneck under heavy loads.
@@ -150,46 +150,46 @@ which may become a bottleneck under heavy loads.
 *Usage Example:*
 
 ```gleam
-import wisp_kv_sessions/actor_store
+import wisp_kv_sessions/actor_adapter
 
-use session_store <- result.map(actor_store.new())
+use session_store <- result.map(actor_adapter.new())
 
 // ...
 ```
 See `./example/src/app.gleam` for full example
 
-### postgress_store
-Also included is the postgres_store, that allows you to use postgres as 
+### postgres_adapter
+Also included is the postgres_adapter, that allows you to use postgres as 
 the storage implementation
 
 ```gleam
-import wisp_kv_sessions/postgres_store
+import wisp_kv_sessions/postgres_adapter
 
 let db = 
   pog.default_config()
   |> pog.connect()
 
 // Migrate
-use _ <- result.try(postgres_store.migrate_up(conn))
+use _ <- result.try(postgres_adapter.migrate_up(conn))
 
 // Setup session_store
-use session_store <- result.map(postgres_store.new(conn))
+use session_store <- result.map(postgres_adapter.new(conn))
 
 //...
 ```
 
 
-### ets_store
+### ets_adapter
 
-The ets_store uses [Erlang Term Storage](https://www.erlang.org/doc/apps/stdlib/ets.html) 
+The ets_adapter uses [Erlang Term Storage](https://www.erlang.org/doc/apps/stdlib/ets.html) 
 and [carpenter](https://hexdocs.pm/carpenter/) to store session information.
 *This will NOT be persistant after restarts*. But is a good option for caching.
 
 ```gleam
-import wisp_kv_sessions/ets_store
+import wisp_kv_sessions/ets_adapter
 
 // Setup session_store
-use session_store <- result.map(ets_store.new(conn))
+use session_store <- result.map(ets_adapter.new(conn))
 
 //...
 ```

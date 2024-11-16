@@ -1,6 +1,6 @@
 import gleeunit/should
 import test_helpers
-import wisp_kv_sessions/postgres_store
+import wisp_kv_sessions/postgres_adapter
 import wisp_kv_sessions/session
 
 pub fn set_get_session_test() {
@@ -10,7 +10,7 @@ pub fn set_get_session_test() {
     |> session.with_entry("test", "hello")
     |> session.build
 
-  let session_store = postgres_store.new(db)
+  let session_store = postgres_adapter.new(db)
 
   session_store.save_session(session)
   |> should.be_ok()
@@ -29,7 +29,7 @@ pub fn set_delete_session_test() {
     |> session.with_entry("test", "hello")
     |> session.build
 
-  let session_store = postgres_store.new(db)
+  let session_store = postgres_adapter.new(db)
 
   session_store.save_session(session)
   |> should.be_ok()
@@ -60,7 +60,7 @@ pub fn encode_data_test() {
     )
     |> dict.insert("key_three", "value3")
 
-  let json = postgres_store.encode_data(data)
+  let json = postgres_adapter.encode_data(data)
 
   json
   |> json.to_string
@@ -86,7 +86,7 @@ pub fn encode_data_test() {
 
   json
   |> json.to_string
-  |> postgres_store.decode_data_from_string()
+  |> postgres_adapter.decode_data_from_string()
   |> should.be_ok
   |> should.equal(data)
 }
