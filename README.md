@@ -177,7 +177,6 @@ use session_store <- result.map(postgres_store.new(conn))
 
 //...
 ```
-Further documentation can be found at <https://hexdocs.pm/wisp_kv_sessions_postgres_store>.
 
 
 ### ets_store
@@ -194,4 +193,3 @@ use session_store <- result.map(ets_store.new(conn))
 
 //...
 ```
-Further documentation can be found at <https://hexdocs.pm/wisp_kv_sessions_ets_store>.
