@@ -13,6 +13,7 @@ import gleam/result
 import gleeunit/should
 import pog
 import wisp
+import wisp_kv_sessions
 import wisp_kv_sessions/actor_adapter
 import wisp_kv_sessions/postgres_adapter
 import wisp_kv_sessions/session
@@ -54,6 +55,15 @@ pub fn test_obj_to_json(obj: TestObj) {
 pub fn test_obj_from_json(json) {
   dynamic.decode1(TestObj, dynamic.field("test_field", of: dynamic.string))(
     json,
+  )
+}
+
+pub fn test_session_key(current_session: wisp_kv_sessions.CurrentSession) {
+  current_session
+  |> wisp_kv_sessions.key("test_key")
+  |> wisp_kv_sessions.with_codec(
+    decoder: test_obj_from_json,
+    encoder: test_obj_to_json,
   )
 }
 

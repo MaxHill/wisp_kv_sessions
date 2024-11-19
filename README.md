@@ -11,9 +11,7 @@ wisp_kv_sessions is a key-value session management library for [Wisp](https://gl
 An minimal example usage is available in `./example/app.gleam`.
 
 ```gleam
-import gleam/dynamic
 import gleam/erlang/process
-import gleam/json
 import gleam/option
 import gleam/result
 import gleam/string_builder
@@ -26,16 +24,16 @@ import wisp_kv_sessions/session
 import wisp_kv_sessions/session_config
 
 pub fn main() {
-  // Setup session_store
-  use actor_adapter <- result.map(actor_adapter.try_create_session_store())
-  use cache_store <- result.map(actor_adapter.try_create_session_store())
+  // Setup session_adapter
+  use store <- result.map(actor_adapter.new())
+  use cache_store <- result.map(actor_adapter.new())
 
   // Create session config
   let session_config =
     session_config.Config(
       default_expiry: session.ExpireIn(60 * 60),
       cookie_name: "SESSION_COOKIE",
-      store: actor_adapter,
+      store:,
       cache: option.Some(cache_store),
     )
 
@@ -52,22 +50,26 @@ pub fn main() {
 }
 
 pub fn handle_request(req: wisp.Request, session_config) -> wisp.Response {
-  use req <- wisp_kv_sessions.middleware(session_config, req)
+  // Run the middleware and construct current_session
+  use req <- wisp_kv_sessions.middleware(req, session_config)
+  let current_session = wisp_kv_sessions.CurrentSession(req, session_config)
 
   case wisp.path_segments(req) {
-    [] -> get_value_page(req, session_config)
-    ["set"] -> set_value_page(req, session_config)
+    [] -> get_value_page(req, current_session)
+    ["set"] -> set_value_page(req, current_session)
     _ -> wisp.not_found()
   }
 }
 
 fn get_value_page(
-  req: wisp.Request,
-  session_config: session_config.Config,
+  _req: wisp.Request,
+  session: wisp_kv_sessions.CurrentSession,
 ) -> wisp.Response {
   // Read value to the session
   let assert Ok(key) =
-    wisp_kv_sessions.get(session_config, req, "test_key", dynamic.string)
+    session
+    |> wisp_kv_sessions.key("test_key")
+    |> wisp_kv_sessions.get()
 
   case key {
     option.Some(k) -> {
@@ -82,24 +84,16 @@ fn get_value_page(
   }
 }
 
-// Not nessesary for this simple type 
-fn encode_string(str: String) {
-  json.string(str) |> json.to_string
-}
-
 fn set_value_page(
-  req: wisp.Request,
-  session_config: session_config.Config,
+  _req: wisp.Request,
+  session: wisp_kv_sessions.CurrentSession,
 ) -> wisp.Response {
   // Set value to the session
   let _ =
-    wisp_kv_sessions.set(
-      session_config,
-      req,
-      "test_key",
-      "something",
-      encode_string,
-    )
+    session
+    |> wisp_kv_sessions.key("test_key")
+    |> wisp_kv_sessions.set("something")
+
   wisp.redirect("/")
 }
 ```

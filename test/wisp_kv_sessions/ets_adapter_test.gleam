@@ -23,7 +23,7 @@ pub fn set_get_session_test() {
 pub fn set_delete_session_test() {
   let session =
     session.builder()
-    |> session.with_entry("test", "hello")
+    |> session.with_entry("test", "hello2")
     |> session.build
 
   let session_store = ets_adapter.new("test_table2")

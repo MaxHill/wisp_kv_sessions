@@ -21,13 +21,9 @@ pub fn return_an_error_if_no_session_cookie_exist_test() {
   use #(session_config, _, _) <- result.map(test_helpers.test_session_config())
   let req = testing.get("/", [])
 
-  wisp_kv_sessions.set(
-    session_config,
-    req,
-    "test_key",
-    test_helpers.TestObj(test_field: "test"),
-    test_helpers.test_obj_to_json,
-  )
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> test_helpers.test_session_key()
+  |> wisp_kv_sessions.set(test_helpers.TestObj(test_field: "test"))
   |> should.be_error
   |> should.equal(session.NoSessionError)
 }
@@ -47,13 +43,10 @@ pub fn set_a_value_in_the_session_test() {
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
 
   let test_obj = test_helpers.TestObj(test_field: "test")
-  wisp_kv_sessions.set(
-    session_config,
-    req,
-    "test_key",
-    test_obj,
-    test_helpers.test_obj_to_json,
-  )
+
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> test_helpers.test_session_key()
+  |> wisp_kv_sessions.set(test_obj)
   |> should.be_ok
   |> should.equal(test_obj)
 }
@@ -74,20 +67,13 @@ pub fn get_a_value_from_the_session_test() {
 
   let test_obj = test_helpers.TestObj(test_field: "test")
   let _ =
-    wisp_kv_sessions.set(
-      session_config,
-      req,
-      "test_key",
-      test_obj,
-      test_helpers.test_obj_to_json,
-    )
+    wisp_kv_sessions.CurrentSession(req, session_config)
+    |> test_helpers.test_session_key()
+    |> wisp_kv_sessions.set(test_obj)
 
-  wisp_kv_sessions.get(
-    session_config,
-    req,
-    "test_key",
-    test_helpers.test_obj_from_json,
-  )
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> test_helpers.test_session_key()
+  |> wisp_kv_sessions.get()
   |> should.be_ok
   |> should.be_some
   |> should.equal(test_obj)
@@ -129,7 +115,9 @@ pub fn delete_a_key_from_session_test() {
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
 
-  let _ = wisp_kv_sessions.delete(session_config, req, "test_key")
+  let _ =
+    wisp_kv_sessions.CurrentSession(req, session_config)
+    |> wisp_kv_sessions.delete("test_key")
 
   session_config.store.get_session(session_id)
   |> should.be_ok
@@ -139,11 +127,11 @@ pub fn delete_a_key_from_session_test() {
 }
 
 pub fn delete_a_session_test() {
-  use #(session_config, actor_adapter, expires_at) <- result.map(
+  use #(session_config, store, expires_at) <- result.map(
     test_helpers.test_session_config(),
   )
   use _ <- result.map(
-    actor_adapter.save_session(session.Session(
+    store.save_session(session.Session(
       id: session.id_from_string("TEST_SESSION_ID"),
       expires_at: birl.to_erlang_universal_datetime(expires_at),
       data: dict.from_list([
@@ -158,11 +146,13 @@ pub fn delete_a_session_test() {
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
 
-  wisp_kv_sessions.delete_session(session_config, req)
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> wisp_kv_sessions.delete_session()
   |> should.be_ok
   |> should.equal(Nil)
 
-  wisp_kv_sessions.get_session(session_config, req)
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> wisp_kv_sessions.get_session()
   |> should.be_ok
 }
 
@@ -175,7 +165,9 @@ pub fn creating_a_session_test() {
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
 
-  let session = wisp_kv_sessions.get_session(session_config, req)
+  let session =
+    wisp_kv_sessions.CurrentSession(req, session_config)
+    |> wisp_kv_sessions.get_session()
 
   session
   |> should.be_ok
@@ -206,7 +198,8 @@ pub fn replace_session_test() {
 
   let new_session = session.builder() |> session.build
 
-  wisp_kv_sessions.replace_session(session_config, wisp.ok(), req, new_session)
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> wisp_kv_sessions.replace_session(wisp.ok(), new_session)
   |> should.be_ok
   |> test_helpers.get_session_cookie_from_response(req)
   |> should.be_ok
@@ -243,7 +236,8 @@ pub fn dont_get_expired_session_test() {
       wisp.Signed,
     )
 
-  wisp_kv_sessions.get_session(session_config, req)
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> wisp_kv_sessions.get_session()
   |> should.be_error
 }
 
@@ -270,17 +264,12 @@ pub fn middleware_should_create_the_session_in_the_db_test() {
 
   let req = testing.get("/", [])
   let id =
-    req
-    |> wisp_kv_sessions.middleware(
-      session_config,
-      _,
-      fn(req) {
-        wisp.get_cookie(req, "SESSION_COOKIE", wisp.Signed)
-        |> should.be_ok
+    wisp_kv_sessions.middleware(req, session_config, fn(req) {
+      wisp.get_cookie(req, "SESSION_COOKIE", wisp.Signed)
+      |> should.be_ok
 
-        wisp.ok()
-      },
-    )
+      wisp.ok()
+    })
     |> test_helpers.get_session_cookie_from_response(req)
     |> should.be_ok
 
@@ -292,17 +281,12 @@ pub fn middleware_should_create_the_session_in_the_db_test() {
 pub fn middleware_create_a_session_cookie_if_none_exist_test() {
   use #(session_config, _, _) <- result.map(test_helpers.test_session_config())
 
-  testing.get("/", [])
-  |> wisp_kv_sessions.middleware(
-    session_config,
-    _,
-    fn(req) {
-      wisp.get_cookie(req, "SESSION_COOKIE", wisp.Signed)
-      |> should.be_ok
+  wisp_kv_sessions.middleware(testing.get("/", []), session_config, fn(req) {
+    wisp.get_cookie(req, "SESSION_COOKIE", wisp.Signed)
+    |> should.be_ok
 
-      wisp.ok()
-    },
-  )
+    wisp.ok()
+  })
   |> response.get_cookies
   |> list.key_find("SESSION_COOKIE")
   |> should.be_ok
@@ -313,22 +297,17 @@ pub fn middleware_dont_set_cookie_if_its_set_in_handler_test() {
   let session_id = session.generate_id()
   let req = testing.get("/", [])
 
-  req
-  |> wisp_kv_sessions.middleware(
-    session_config,
-    _,
-    fn(req) {
-      wisp.ok()
-      |> utils.set_session_cookie(
-        session_config.cookie_name,
-        _,
-        req,
-        session.builder()
-          |> session.with_id(session_id)
-          |> session.build(),
-      )
-    },
-  )
+  wisp_kv_sessions.middleware(req, session_config, fn(req) {
+    wisp.ok()
+    |> utils.set_session_cookie(
+      session_config.cookie_name,
+      _,
+      req,
+      session.builder()
+        |> session.with_id(session_id)
+        |> session.build(),
+    )
+  })
   |> test_helpers.get_session_cookie_from_response(req)
   |> should.be_ok
   |> should.equal(session.id_to_string(session_id))

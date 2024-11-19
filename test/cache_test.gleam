@@ -19,12 +19,9 @@ pub fn get_value_from_cache_test() {
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
 
-  wisp_kv_sessions.get(
-    session_config,
-    req,
-    "test_key",
-    test_helpers.test_obj_from_json,
-  )
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> test_helpers.test_session_key
+  |> wisp_kv_sessions.get()
   |> should.be_ok
   |> should.be_some
   |> should.equal(test_obj)
@@ -45,12 +42,9 @@ pub fn get_value_from_falls_back_to_main_test() {
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
 
-  wisp_kv_sessions.get(
-    session_config,
-    req,
-    "test_key",
-    test_helpers.test_obj_from_json,
-  )
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> test_helpers.test_session_key
+  |> wisp_kv_sessions.get
   |> should.be_ok
   |> should.be_some
   |> should.equal(test_obj)
@@ -70,13 +64,9 @@ pub fn set_value_in_session_test() {
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
 
-  wisp_kv_sessions.set(
-    session_config,
-    req,
-    "test_key",
-    test_obj,
-    test_helpers.test_obj_to_json,
-  )
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> test_helpers.test_session_key()
+  |> wisp_kv_sessions.set(test_obj)
   |> should.be_ok
 
   cache_store.get_session(session.id)
@@ -102,7 +92,8 @@ pub fn delete_value_from_cache_test() {
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
 
-  wisp_kv_sessions.delete(session_config, req, "test_key")
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> wisp_kv_sessions.delete("test_key")
   |> should.be_ok
 
   cache_store.get_session(session.id)
@@ -130,7 +121,8 @@ pub fn get_session_test() {
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
 
-  wisp_kv_sessions.get_session(session_config, req)
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> wisp_kv_sessions.get_session()
   |> should.be_ok()
   |> should.equal(session)
 }
@@ -147,7 +139,8 @@ pub fn get_session_falls_back_to_main_test() {
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
 
-  wisp_kv_sessions.get_session(session_config, req)
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> wisp_kv_sessions.get_session()
   |> should.be_ok()
   |> should.equal(session)
 }
@@ -168,7 +161,8 @@ pub fn caches_new_session_on_create_test() {
     testing.get("/", [])
     |> testing.set_cookie("SESSION_COOKIE", "TEST_SESSION_ID", wisp.Signed)
 
-  wisp_kv_sessions.get_session(session_config, req)
+  wisp_kv_sessions.CurrentSession(req, session_config)
+  |> wisp_kv_sessions.get_session()
   |> should.be_ok()
   |> should.equal(session)
 
