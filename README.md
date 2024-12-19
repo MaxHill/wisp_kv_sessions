@@ -4,6 +4,9 @@
 [![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/wisp_kv_sessions/)
 
 
+# RENAMED
+This package has been renamed to: [kv_sessions](https://hexdocs.pm/kv_sessions)
+
 # Overview
 wisp_kv_sessions is a key-value session management library for [Wisp](https://gleam-wisp.github.io/wisp/), inspired by the Rust crate [tower sessions](https://docs.rs/tower-sessions/latest/tower_sessions/#). This library allows you to manage user sessions with ease, storing session data in a simple key-value store. 
 

@@ -24,7 +24,7 @@ test:
 db_run:
     docker run \
      --rm \
-     -p $DB_PORT:5432 \
+     -p $DB_HOST_PORT:5432 \
      -e POSTGRES_PASSWORD=$DB_PASSWORD \
      -e POSTGRES_USER=$DB_USER \
      --name $DB_TAG \
